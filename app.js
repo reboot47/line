@@ -29,12 +29,19 @@ app.get('/', (req, res) => {
   res.send('LINE Bot Server is running!');
 });
 
+// WebhookエンドポイントのGETリクエスト対応
+app.get('/webhook', (req, res) => {
+  res.send('This is a LINE Bot webhook endpoint. POST requests from LINE Platform are accepted.');
+});
+
 // Webhookエンドポイント
 app.post('/webhook', (req, res) => {
-  console.log('Webhook called:', req.body);
-  if (!req.body || !req.body.events) {
-    console.log('Invalid webhook request:', req.body);
-    return res.status(400).json({ error: 'Invalid webhook request' });
+  console.log('Webhook called - body exists:', !!req.body);
+  
+  // Webhook検証の場合、空の配列を返す
+  if (!req.body || !req.body.events || req.body.events.length === 0) {
+    console.log('Webhook verification or empty events request');
+    return res.status(200).json({ success: true });
   }
 
   Promise
@@ -42,7 +49,7 @@ app.post('/webhook', (req, res) => {
     .then((result) => res.json(result))
     .catch((err) => {
       console.error('Error handling webhook:', err);
-      res.status(500).end();
+      res.status(200).json({ success: true }); // エラー時も200を返す
     });
 });
 
