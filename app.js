@@ -6,6 +6,7 @@ const express = require('express');
 const line = require('@line/bot-sdk');
 const bodyParser = require('body-parser');
 const crypto = require('crypto');
+const { OpenAI } = require('openai');
 
 // 環境変数の設定を読み込む
 const PORT = process.env.PORT || 3000;
@@ -13,6 +14,11 @@ const config = {
   channelSecret: process.env.LINE_CHANNEL_SECRET,
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
 };
+
+// OpenAI APIクライアントの初期化
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY, // 環境変数からAPIキーを読み込む
+});
 
 // LINEクライアントと Express アプリケーションを作成
 const client = new line.Client(config);
@@ -88,7 +94,7 @@ async function handleEvent(event) {
   const receivedMessage = event.message.text;
   let replyMessage = '';
 
-  // 特定のキーワードへの応答
+  // 特定のキーワードの場合は即度応答
   if (receivedMessage.includes('こんにちは')) {
     replyMessage = 'こんにちは！今日も素敵な一日ですね！';
   } else if (receivedMessage.includes('おはよう')) {
@@ -96,33 +102,27 @@ async function handleEvent(event) {
   } else if (receivedMessage.includes('おやすみ')) {
     replyMessage = 'おやすみなさい！良い夢を見てくださいね。';
   } else {
-    // ランダムな応答を生成
-    const randomResponses = [
-      '面白いですね！もっと教えてください！',
-      'なるほど！そういう考え方もありますね。',
-      'それは私も考えたことがあります！',
-      '素晴らしい発想ですね！',
-      'うーん、深いお話ですね...',
-      '今日の天気はどうですか？',
-      'それについて、もっと詳しく聞かせてもらえますか？',
-      '実は私もそう思っていました！',
-      'そうなんですね！知りませんでした！',
-      'びっくりしました！',
-      '素敵なメッセージをありがとうございます！',
-      '考えさせられるお話ですね...',
-      'それは興味深いですね！',
-      'なんとも言えない気持ちです...',
-      'わくわくしますね！',
-      '素晴らしい一日をお過ごしください！',
-      'いつもありがとうございます！',
-      'そんな風に考えたことはありませんでした！',
-      'その調子で頑張ってください！',
-      'あなたのメッセージを読むのは楽しいです！'
-    ];
-
-    // ランダムにインデックスを選択
-    const randomIndex = Math.floor(Math.random() * randomResponses.length);
-    replyMessage = randomResponses[randomIndex];
+    try {
+      // ChatGPTを使用して応答生成
+      replyMessage = await generateChatGPTResponse(receivedMessage);
+    } catch (error) {
+      console.error('ChatGPT APIエラー:', error);
+      // エラー時はフォールバックのランダム応答を返す
+      const randomResponses = [
+        'ごめんなさい、今ちょっと考えるのに時間が必要です。',
+        'うーん、難しい質問ですね。もう少し考えさせてください。',
+        '申し訳ありません、今接続が不安定なようです。後でもう一度お試しください。',
+        'すみません、ちょっと混雑しています。後ほどお返事します。',
+        '興味深い質問ですね！実はそのことについて考えていたところです。'
+      ];
+      const randomIndex = Math.floor(Math.random() * randomResponses.length);
+      replyMessage = randomResponses[randomIndex];
+    }
+  }
+  
+  // 応答が長すぎる場合は切り詰め
+  if (replyMessage.length > 2000) {
+    replyMessage = replyMessage.substring(0, 1997) + '...';
   }
 
   // メッセージを返信
@@ -130,6 +130,45 @@ async function handleEvent(event) {
     type: 'text',
     text: replyMessage,
   });
+}
+
+// ChatGPTを使用して応答を生成する関数
+async function generateChatGPTResponse(userMessage) {
+  try {
+    // リクエストのログ出力
+    console.log('ChatGPT APIにリクエスト中:', userMessage);
+    
+    // APIキーが設定されているか確認
+    if (!process.env.OPENAI_API_KEY) {
+      console.error('OPENAI_API_KEYが設定されていません');
+      return '申し訳ありませんが、現在APIが利用できません。後ほどお試しください。';
+    }
+
+    // ChatGPT APIへのリクエスト
+    const response = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages: [
+        {
+          role: 'system',
+          content: 'あなたは助けになるフレンドリーなチャットボットです。日本語で短く、親しみやすく、そして有益な情報を提供してください。答えは100字程度に収めてください。'
+        },
+        {
+          role: 'user',
+          content: userMessage
+        }
+      ],
+      max_tokens: 500,
+      temperature: 0.7
+    });
+
+    // 応答を取得
+    const reply = response.choices[0].message.content.trim();
+    console.log('ChatGPT応答:', reply);
+    return reply;
+  } catch (error) {
+    console.error('ChatGPT APIエラー:', error);
+    throw error;
+  }
 }
 
 // サーバー起動
