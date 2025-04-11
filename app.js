@@ -33,6 +33,15 @@ console.log('サーバー起動時OpenAI初期化確認:', {
 const client = new line.Client(config);
 const app = express();
 
+// サーバー起動時のログ
+console.log('サーバー起動時の環境変数:', {
+  PORT: process.env.PORT,
+  NODE_ENV: process.env.NODE_ENV,
+  LINE_CHANNEL_SECRET: process.env.LINE_CHANNEL_SECRET ? '設定あり' : '未設定',
+  LINE_CHANNEL_ACCESS_TOKEN: process.env.LINE_CHANNEL_ACCESS_TOKEN ? '設定あり' : '未設定',
+  OPENAI_API_KEY: process.env.OPENAI_API_KEY ? '設定あり' : '未設定'
+});
+
 // 生のリクエストデータを取り込むミドルウェア
 app.use(express.json({
   verify: (req, res, buf) => {
@@ -64,28 +73,19 @@ app.get('/webhook', (req, res) => {
 // 成功したアプローチをベースにした完全な機能を持つWebhookハンドラー
 app.post('/webhook', (req, res) => {
   console.log('\n\n=== Webhookを受信しました ===');
-  console.log('現在時刻:', new Date().toISOString());
+  console.log('リクエストボディ:', JSON.stringify(req.body));
   
   // 即度に200レスポンスを返す
   res.status(200).send('OK');
-  console.log('200 OKレスポンスを送信しました');
   
-  // リクエストの構造をログ出力
-  const hasEvents = req.body && req.body.events && Array.isArray(req.body.events);
-  console.log('Webhookの構造:', { 
-    hasBody: !!req.body, 
-    hasEvents: hasEvents,
-    eventCount: hasEvents ? req.body.events.length : 0 
-  });
+  // 必要なリクエストボディを確認
+  if (!req.body || !req.body.events || !Array.isArray(req.body.events)) {
+    console.error('無効なリクエスト本体:', JSON.stringify(req.body));
+    return;
+  }
   
   // 非同期でイベントを処理
   setTimeout(async () => {
-    console.log('非同期処理が開始されました');
-    // イベントの配列を確認
-    if (!req.body || !req.body.events || !Array.isArray(req.body.events)) {
-      console.error('無効なリクエスト本文:', req.body);
-      return;
-    }
     
     try {
       console.log('Webhook called - processing events');
@@ -155,132 +155,47 @@ function validateSignature(body, channelSecret, signature) {
   return hash === signature;
 }
 
-// イベントハンドラー
+// メッセージイベントを処理する関数 - 単純化したベーシックバージョン
 async function handleEvent(event) {
-  console.log('=== handleEvent関数に入りました ===');
-  console.log('イベントタイプ:', event.type);
+  console.log('イベント処理開始:', JSON.stringify(event));
   
-  // テキストメッセージ以外のイベントの場合は処理しない
+  // テキストメッセージ以外は処理しない
   if (event.type !== 'message' || event.message.type !== 'text') {
     console.log('テキストメッセージ以外のイベントなので処理しません');
     return Promise.resolve(null);
   }
 
-  // ユーザーからのメッセージを取得
+  // 受信メッセージ
   const userMessage = event.message.text;
   console.log('受信メッセージ:', userMessage);
   
-  // デバッグメッセージの場合は即度に応答
-  if (userMessage.toLowerCase().includes('debug')) {
-    console.log('デバッグモードを検出');
-    const debugInfo = {
-      openaiApiKey: process.env.OPENAI_API_KEY ? '設定済み' : '未設定',
-      keyPrefix: process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.substring(0, 7) + '...' : 'なし',
-      openaiClient: !!openai ? '初期化済み' : '初期化失敗',
-      timestamp: new Date().toISOString(),
-      nodeVersion: process.version,
-      environment: process.env.NODE_ENV || 'development'
-    };
-    
-    const debugResponse = `デバッグ情報:\n
-- OpenAI API: ${debugInfo.openaiApiKey}\n
-- キー形式: ${debugInfo.keyPrefix}\n
-- クライアント: ${debugInfo.openaiClient}\n
-- 環境: ${debugInfo.environment}\n
-- 時刻: ${debugInfo.timestamp}`;
-    
-    console.log('デバッグ応答を送信:', debugResponse);
-    
-    return client.replyMessage(event.replyToken, {
-      type: 'text',
-      text: debugResponse
-    }).catch((error) => {
-      console.error('デバッグ応答送信エラー:', error);
-      throw error;
-    });
+  // すべてのメッセージにデバッグ情報を追加
+  const debugInfo = {
+    message: userMessage,
+    time: new Date().toISOString(),
+    openaiKey: process.env.OPENAI_API_KEY ? '✅' : '❌',
+    lineKey: process.env.LINE_CHANNEL_ACCESS_TOKEN ? '✅' : '❌'
+  };
+  
+  // メッセージに基づいた簡単な応答
+  let responseText = '';
+  
+  if (userMessage.includes('テスト')) {
+    responseText = 'テスト成功！正常に動作しています。';
+  } else {
+    responseText = `「${userMessage}」を受信しました。現在OpenAI APIをテスト中です。\n\nデバッグ情報: 時刻=${debugInfo.time}, OpenAI=${debugInfo.openaiKey}, LINE=${debugInfo.lineKey}`;
   }
   
-  // 通常のメッセージ処理
-  console.log('processUserMessageを呼び出します');
-  let replyMessage = await processUserMessage(userMessage);
-  console.log('生成された応答:', replyMessage);
+  console.log('送信する応答:', responseText);
   
-  // メッセージを送信
-  console.log('LINEに応答送信します');
+  // 応答を送信
   return client.replyMessage(event.replyToken, {
     type: 'text',
-    text: replyMessage
+    text: responseText
   }).catch((error) => {
-    console.error('Error replying to message:', error);
+    console.error('メッセージ送信エラー:', error);
     throw error;
   });
-}
-
-// ユーザーのメッセージを処理する関数
-async function processUserMessage(userMessage) {
-  // 各イベントの詳細情報を出力
-  console.log('Event details:', JSON.stringify({ userMessage }));
-  
-  // 受信したメッセージ
-  const receivedMessage = userMessage;
-  console.log('Received message:', receivedMessage);
-  let replyMessage = '';
-
-  // 特定のキーワードの場合は即度応答
-  if (receivedMessage.includes('こんにちは')) {
-    replyMessage = 'こんにちは！今日も素敵な一日ですね！';
-    console.log('Greeting response generated');
-  } else if (receivedMessage.includes('おはよう')) {
-    replyMessage = 'おはようございます！素晴らしい朝ですね！';
-    console.log('Morning greeting response generated');
-  } else if (receivedMessage.includes('おやすみ')) {
-    replyMessage = 'おやすみなさい！良い夢を見てくださいね。';
-    console.log('Night greeting response generated');
-  } else if (receivedMessage.includes('テスト') || receivedMessage.includes('test')) {
-    // テスト用の固定応答
-    replyMessage = 'テストメッセージを受信しました！正常に動作しています。';
-    console.log('Test message response generated');
-  } else {
-    console.log('Attempting to generate ChatGPT response');
-    try {
-      // ChatGPTを使用して応答生成
-      replyMessage = await generateChatGPTResponse(receivedMessage);
-      console.log('ChatGPT response generated:', replyMessage);
-    } catch (error) {
-      console.error('ChatGPT APIエラー:', error);
-      // エラー時はフォールバックのランダム応答を返す
-      const randomResponses = [
-        'ごめんなさい、今ちょっと考えるのに時間が必要です。',
-        'うーん、難しい質問ですね。もう少し考えさせてください。',
-        '申し訳ありません、今接続が不安定なようです。後でもう一度お試しください。',
-        'すみません、ちょっと混雑しています。後ほどお返事します。',
-        '興味深い質問ですね！実はそのことについて考えていたところです。'
-      ];
-      const randomIndex = Math.floor(Math.random() * randomResponses.length);
-      replyMessage = randomResponses[randomIndex];
-      console.log('Fallback random response generated:', replyMessage);
-    }
-  }
-  
-  // 応答が長すぎる場合は切り詰め
-  if (replyMessage.length > 2000) {
-    replyMessage = replyMessage.substring(0, 1997) + '...';
-  }
-
-  console.log('Preparing to send reply:', replyMessage);
-
-  // メッセージを返信
-  try {
-    const result = await client.replyMessage(event.replyToken, {
-      type: 'text',
-      text: replyMessage,
-    });
-    console.log('Message sent successfully, result:', JSON.stringify(result));
-    return result;
-  } catch (error) {
-    console.error('Error sending reply message:', error);
-    throw error;
-  }
 }
 
 // ChatGPTを使用して応答を生成する関数
