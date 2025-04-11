@@ -233,67 +233,90 @@ async function handleEvent(event) {
 // ChatGPTを使用して応答を生成する関数
 async function generateChatGPTResponse(userMessage) {
   try {
-    // リクエストのログ出力
-    console.log('--------ChatGPT APIリクエスト開始--------');
+    // リクエストの詳細ログ出力
+    console.log('\n\n********** OpenAI API CALL START **********');
     console.log('ユーザーメッセージ:', userMessage);
+    console.log('NODE_VERSION:', process.version);
+    console.log('OPENAI_LIB_VERSION:', require('openai/package.json').version);
 
-    // APIキーの確認
+    // APIキーの詳細確認
     if (!process.env.OPENAI_API_KEY) {
       console.error('OPENAI_API_KEYが設定されていません');
-      return 'システムエラー: APIキーが設定されていません';
+      return 'エラー詳細: OpenAI APIキーが設定されていません。環境変数を確認してください。';
     }
 
-    // OpenAI APIにリクエストを送信する
+    // APIキーの形式確認
+    console.log('API Key形式:', process.env.OPENAI_API_KEY.substring(0, 10) + '...');
+    
+    // OpenAIクライアント情報
+    console.log('OpenAI Client Info:', {
+      initialized: !!openai,
+      hasAPIKey: !!openai.apiKey,
+      baseURL: openai.baseURL || 'default',
+      defaultHeaders: JSON.stringify(openai.defaultHeaders || {}).substring(0, 100) + '...'
+    });
+
+    // APIにリクエストを送信
+    console.log('APIリクエスト送信開始...');
+    
     try {
-      console.log('OpenAI APIリクエスト開始');
-      console.log('API Key先頭部分:', process.env.OPENAI_API_KEY.substring(0, 7) + '...');
-      
-      // よりシンプルなリクエスト構成
+      // シンプルなリクエスト構成 – 既知のモデルを使用
       const response = await openai.chat.completions.create({
-        model: 'gpt-3.5-turbo-0125', // 新しいバージョンを指定
+        model: 'gpt-3.5-turbo', // 最も標準的なモデル
         messages: [
-          { role: 'system', content: 'あなたは日本語で短く答えるチャットボットです。最大100文字程度で答えてください。' },
+          { role: 'system', content: 'あなたは日本語で答えるチャットボットです。短く答えてください。' },
           { role: 'user', content: userMessage }
         ],
-        max_tokens: 300,
-        temperature: 0.7
+        max_tokens: 150,
+        temperature: 0.5
       });
       
-      console.log('APIレスポンス受信:', !!response);
+      console.log('APIレスポンス受信成功!');
+      console.log('レスポンス構造:', JSON.stringify(response, null, 2).substring(0, 200) + '...');
       
-      // 応答を取得して返す
-      if (response.choices && response.choices.length > 0) {
+      // 応答テキストの取得
+      if (response.choices && response.choices.length > 0 && response.choices[0].message) {
         const reply = response.choices[0].message.content.trim();
-        console.log('ChatGPT応答:', reply);
+        console.log('ChatGPT応答テキスト:', reply);
         return reply;
       } else {
-        return 'エラー: OpenAIからの応答が受信できませんでした';
+        console.error('レスポンスからテキストを取得できませんでした:', JSON.stringify(response));
+        return 'システムエラー: OpenAIからの応答データが不正です。';
       }
     } catch (apiError) {
-      // エラーメッセージの詳細をログに記録
-      console.error('OpenAI APIエラー:', apiError.message);
-      console.error('OpenAI APIエラー詳細:', JSON.stringify(apiError));
+      // 詳細なエラー情報の取得とログ出力
+      console.error('\n*** OPENAI API ERROR ***');
+      console.error('Error message:', apiError.message);
+      console.error('Error name:', apiError.name);
+      console.error('Error stack:', apiError.stack);
       
-      // フォールバック応答の返却
-      if (apiError.message && apiError.message.includes('不正なAPIキー')) {
-        return 'エラー: APIキーが無効です。管理者に連絡してください。';
-      } else {
-        // フォールバック応答セット
-        const fallbackResponses = [
-          '申し訳ありません、お待ちください。後ほどお返事します。',
-          'ご質問ありがとうございます。現在処理中です。',
-          '現在サーバーが混雑しています。後ほどお試しください。',
-          '申し訳ありません、この質問にはもう少し時間が必要です。',
-          'その質問はとても興味深いですね。後ほど詳しくお返事します。'
-        ];
-        
-        const randomIndex = Math.floor(Math.random() * fallbackResponses.length);
-        return fallbackResponses[randomIndex];
+      // エラーレスポンスがあれば詳細を出力
+      if (apiError.response) {
+        console.error('API Error Response:', JSON.stringify(apiError.response, null, 2));
       }
+      
+      // エラーコードによる処理
+      let errorMessage = 'エラー: ';
+      
+      if (apiError.message.includes('API key')) {
+        errorMessage += 'APIキーが無効です。エラーメッセージ: ' + apiError.message;
+      } else if (apiError.message.includes('rate limit')) {
+        errorMessage += 'APIのレート制限に達しました。エラーメッセージ: ' + apiError.message;
+      } else if (apiError.message.includes('timeout')) {
+        errorMessage += 'リクエストがタイムアウトしました。エラーメッセージ: ' + apiError.message;
+      } else {
+        errorMessage += '予期しないエラーが発生しました。エラーメッセージ: ' + apiError.message;
+      }
+      
+      // エラー内容を返す
+      return errorMessage;
     }
   } catch (error) {
-    console.error('まとめエラー:', error);
-    return 'システムエラーが発生しました。後ほどお試しください。';
+    // 全体的なエラーハンドリング
+    console.error('\n*** GLOBAL ERROR ***');
+    console.error('Error:', error);
+    console.error('Stack:', error.stack);
+    return '重大エラー: システムエラーが発生しました。エラーメッセージ: ' + error.message;
   }
 }
 
