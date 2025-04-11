@@ -227,8 +227,8 @@ async function generateChatGPTResponse(userMessage) {
       return 'システムエラー: API設定がありません';
     }
     
-    // キーが正しい形式か確認
-    const apiKeyPattern = /^sk-[a-zA-Z0-9]+$/;
+    // キーが正しい形式か確認 - プロジェクトキー(sk-proj-)形式にも対応
+    const apiKeyPattern = /^sk-(proj-)?[a-zA-Z0-9-_]+$/;
     if (!apiKeyPattern.test(process.env.OPENAI_API_KEY)) {
       console.error('OPENAI_API_KEYが正しい形式ではありません');
       console.log('API Key形式:', process.env.OPENAI_API_KEY.substring(0, 10) + '...');
