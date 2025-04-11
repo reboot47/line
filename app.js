@@ -246,15 +246,15 @@ async function generateChatGPTResponse(userMessage) {
       return 'エラー詳細: OpenAI APIキーが設定されていません。環境変数を確認してください。';
     }
 
-    // APIキーの形式確認
-    console.log('API Key形式:', process.env.OPENAI_API_KEY.substring(0, 10) + '...');
+    // APIキーの形式確認 - 安全なsubstring呼び出し
+    console.log('API Key形式:', process.env.OPENAI_API_KEY ? (process.env.OPENAI_API_KEY.substring(0, 10) + '...') : '未設定');
     
-    // OpenAIクライアント情報
+    // OpenAIクライアント情報 - 安全な処理
     console.log('OpenAI Client Info:', {
       initialized: !!openai,
-      hasAPIKey: !!openai.apiKey,
-      baseURL: openai.baseURL || 'default',
-      defaultHeaders: JSON.stringify(openai.defaultHeaders || {}).substring(0, 100) + '...'
+      hasAPIKey: openai && !!openai.apiKey,
+      baseURL: openai && openai.baseURL ? openai.baseURL : 'default'
+      // defaultHeadersの詳細は安全のため省略
     });
 
     // APIにリクエストを送信
@@ -273,7 +273,7 @@ async function generateChatGPTResponse(userMessage) {
       });
       
       console.log('APIレスポンス受信成功!');
-      console.log('レスポンス構造:', JSON.stringify(response, null, 2).substring(0, 200) + '...');
+      console.log('レスポンス構造:', response ? JSON.stringify(response, null, 2).substring(0, 200) + '...' : '空のレスポンス');
       
       // 応答テキストの取得
       if (response.choices && response.choices.length > 0 && response.choices[0].message) {
