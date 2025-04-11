@@ -53,36 +53,34 @@ app.get('/webhook', (req, res) => {
   res.status(200).send('This is a LINE Bot webhook endpoint. POST requests from LINE Platform are accepted.');
 });
 
-// Webhookエンドポイント
+// 最も単純なWebhookエンドポイントハンドラー
 app.post('/webhook', (req, res) => {
-  // 常に200を返すようにする
-  try {
-    console.log('Webhook called - headers:', JSON.stringify(req.headers));
-    console.log('Webhook called - body exists:', !!req.body);
-    if (req.body) {
-      debugLog({ body: req.body });
-    }
-    
-    // Webhook検証や空のリクエストの場合
-    if (!req.body || !req.body.events || req.body.events.length === 0) {
-      console.log('Webhook verification or empty request');
-      return res.status(200).send('OK'); // 検証には空の200レスポンス
-    }
-    
-    // メッセージを処理
-    Promise.all(req.body.events.map(handleEvent))
-      .then((result) => {
-        console.log('Successfully processed events');
-        return res.status(200).json(result);
-      })
-      .catch((err) => {
-        console.error('Error processing events:', err);
-        return res.status(200).send('OK'); // エラーでも常に200を返す
+  // まず直ちに200レスポンスを返す
+  res.status(200).send('OK');
+
+  // 非同期で情報処理ログ記録のみ実行
+  setTimeout(() => {
+    try {
+      console.log('Webhook called - async logging');
+      console.log('Headers:', JSON.stringify(req.headers));
+      console.log('Body exists:', !!req.body);
+      
+      // 検証リクエストや空リクエストの場合は無視
+      if (!req.body || !req.body.events || req.body.events.length === 0) {
+        console.log('Webhook verification or empty request - no action needed');
+        return;
+      }
+
+      // 実際にイベント処理を非同期で実行
+      req.body.events.forEach(event => {
+        handleEvent(event)
+          .then(() => console.log('Event handled successfully'))
+          .catch(err => console.error('Error handling event:', err));
       });
-  } catch (error) {
-    console.error('Unexpected error in webhook handler:', error);
-    return res.status(200).send('OK'); // 予期せぬエラーでも200を返す
-  }
+    } catch (error) {
+      console.error('Async processing error:', error);
+    }
+  }, 10); // レスポンス送信後に実行されるように少し遅延
 });
 
 // 署名検証関数
