@@ -17,9 +17,9 @@ const config = {
 };
 
 // OpenAI APIクライアントの初期化
+// シンプルな設定にして問題を最小化
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY, // 環境変数からAPIキーを読み込む
-  dangerouslyAllowBrowser: true  // ブラウザ環境での実行を許可
 });
 
 // OpenAIクライアントの初期化確認
@@ -236,84 +236,64 @@ async function generateChatGPTResponse(userMessage) {
     // リクエストのログ出力
     console.log('--------ChatGPT APIリクエスト開始--------');
     console.log('ユーザーメッセージ:', userMessage);
-    
-    // 固定応答を返すテストモード
-    // まずは実際にChatGPTを呼び出さず、固定応答で動作確認
-    console.log('一時的に固定応答モードで対応します');
-    
-    // 固定応答セット
-    const predefinedResponses = [
-      'なるほど、それは興味深いお話ですね。もっと詳しくお聞かせください。',
-      'ご質問ありがとうございます。その件については、少し調べてみる必要がありそうです。',
-      'それは良い質問ですね。いくつか観点から考えてみましょう。',
-      'なるほど、それは大切なポイントです。もう少し詳しく教えてください。',
-      'それは私も興味を持っているトピックです。他にも聞いてみたいことはありますか？',
-      'ご意見ありがとうございます。その考え方は新しい視点を提供してくれますね。',
-      'その質問について考えるのは面白いですね。いくつかの観点から考えてみましょう。'
-    ];
-    
-    // メッセージの内容に基づいて応答を選択するシンプルなロジック
-    let responseIndex = Math.floor(userMessage.length % predefinedResponses.length);
-    
-    // 選択された応答を取得
-    const selectedResponse = predefinedResponses[responseIndex];
-    console.log('固定応答選択:', responseIndex, selectedResponse);
-    
-    return selectedResponse;
-    
-    /*
-    // 下記は実際のChatGPT API呼び出しコードですが、現在は一時的に無効化しています
-    
-    // APIキーが設定されているか確認
+
+    // APIキーの確認
     if (!process.env.OPENAI_API_KEY) {
       console.error('OPENAI_API_KEYが設定されていません');
-      return 'システムエラー: API設定がありません';
+      return 'システムエラー: APIキーが設定されていません';
     }
-    
-    console.log('OpenAIクライアント確認:', !!openai ? '初期化済み' : '初期化失敗');
-    
+
+    // OpenAI APIにリクエストを送信する
     try {
-      console.log('OpenAI APIリクエスト送信中...');
-      // ChatGPT APIへのリクエスト
+      console.log('OpenAI APIリクエスト開始');
+      console.log('API Key先頭部分:', process.env.OPENAI_API_KEY.substring(0, 7) + '...');
+      
+      // よりシンプルなリクエスト構成
       const response = await openai.chat.completions.create({
-        model: 'gpt-3.5-turbo',
+        model: 'gpt-3.5-turbo-0125', // 新しいバージョンを指定
         messages: [
-          {
-            role: 'system',
-            content: 'あなたは助けになるフレンドリーなチャットボットです。日本語で短く、親しみやすく、そして有益な情報を提供してください。答えは100字程度に収めてください。'
-          },
-          {
-            role: 'user',
-            content: userMessage
-          }
+          { role: 'system', content: 'あなたは日本語で短く答えるチャットボットです。最大100文字程度で答えてください。' },
+          { role: 'user', content: userMessage }
         ],
-        max_tokens: 500,
+        max_tokens: 300,
         temperature: 0.7
       });
       
-      if (response.choices && response.choices.length > 0 && response.choices[0].message) {
-        console.log('ChatGPT応答成功:', response.choices[0].message.content);
-        return response.choices[0].message.content.trim();
+      console.log('APIレスポンス受信:', !!response);
+      
+      // 応答を取得して返す
+      if (response.choices && response.choices.length > 0) {
+        const reply = response.choices[0].message.content.trim();
+        console.log('ChatGPT応答:', reply);
+        return reply;
       } else {
-        console.error('ChatGPT応答の構造が不正:', response);
-        return '応答の受信中に問題が発生しました。';
+        return 'エラー: OpenAIからの応答が受信できませんでした';
       }
     } catch (apiError) {
-      console.error('ChatGPT APIエラー発生:', apiError);
+      // エラーメッセージの詳細をログに記録
+      console.error('OpenAI APIエラー:', apiError.message);
+      console.error('OpenAI APIエラー詳細:', JSON.stringify(apiError));
       
-      if (apiError.message && apiError.message.includes('API key')) {
-        return 'システムエラー: APIキーに問題があります。';
-      } else if (apiError.message && apiError.message.includes('rate limit')) {
-        return 'システムエラー: APIの利用制限に達しました。';
+      // フォールバック応答の返却
+      if (apiError.message && apiError.message.includes('不正なAPIキー')) {
+        return 'エラー: APIキーが無効です。管理者に連絡してください。';
       } else {
-        return `システムエラー: ${apiError.message || '不明なエラー'}`;
+        // フォールバック応答セット
+        const fallbackResponses = [
+          '申し訳ありません、お待ちください。後ほどお返事します。',
+          'ご質問ありがとうございます。現在処理中です。',
+          '現在サーバーが混雑しています。後ほどお試しください。',
+          '申し訳ありません、この質問にはもう少し時間が必要です。',
+          'その質問はとても興味深いですね。後ほど詳しくお返事します。'
+        ];
+        
+        const randomIndex = Math.floor(Math.random() * fallbackResponses.length);
+        return fallbackResponses[randomIndex];
       }
     }
-    */
   } catch (error) {
-    console.error('全体エラー:', error);
-    console.error('エラースタック:', error.stack);
-    return 'システムエラーが発生しました。しばらくしてからお試しください。';
+    console.error('まとめエラー:', error);
+    return 'システムエラーが発生しました。後ほどお試しください。';
   }
 }
 
