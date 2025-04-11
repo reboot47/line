@@ -155,7 +155,7 @@ function validateSignature(body, channelSecret, signature) {
   return hash === signature;
 }
 
-// メッセージイベントを処理する関数 - 単純化したベーシックバージョン
+// メッセージイベントを処理する関数
 async function handleEvent(event) {
   console.log('イベント処理開始:', JSON.stringify(event));
   
@@ -169,21 +169,53 @@ async function handleEvent(event) {
   const userMessage = event.message.text;
   console.log('受信メッセージ:', userMessage);
   
-  // すべてのメッセージにデバッグ情報を追加
+  // デバッグ情報の準備
   const debugInfo = {
-    message: userMessage,
     time: new Date().toISOString(),
     openaiKey: process.env.OPENAI_API_KEY ? '✅' : '❌',
     lineKey: process.env.LINE_CHANNEL_ACCESS_TOKEN ? '✅' : '❌'
   };
   
-  // メッセージに基づいた簡単な応答
+  // キーワードに基づいた応答生成
   let responseText = '';
   
-  if (userMessage.includes('テスト')) {
-    responseText = 'テスト成功！正常に動作しています。';
-  } else {
-    responseText = `「${userMessage}」を受信しました。現在OpenAI APIをテスト中です。\n\nデバッグ情報: 時刻=${debugInfo.time}, OpenAI=${debugInfo.openaiKey}, LINE=${debugInfo.lineKey}`;
+  // デバッグコマンドの処理
+  if (userMessage.toLowerCase().includes('debug')) {
+    responseText = `デバッグ情報:\n
+- 時刻: ${debugInfo.time}\n
+- OpenAI API: ${debugInfo.openaiKey}\n
+- LINE API: ${debugInfo.lineKey}\n
+- ノードバージョン: ${process.version}\n
+- 環境: ${process.env.NODE_ENV || 'development'}`;
+    console.log('デバッグ情報を送信:', responseText);
+  }
+  // テストコマンドの処理
+  else if (userMessage.includes('テスト')) {
+    responseText = 'テスト成功！正常に動作しています。ChatGPTも正常に接続されています。';
+    console.log('テスト応答を送信');
+  }
+  // グリーティングコマンドの処理
+  else if (userMessage.includes('こんにちは') || userMessage.includes('おはよう') || userMessage.includes('こんばんは')) {
+    responseText = `こんにちは！今日もよろしくお願いします。\n何かお聞きしたいことはありますか？`;
+    console.log('グリーティング応答を送信');
+  }
+  // その他のメッセージはChatGPTで処理
+  else {
+    try {
+      console.log('ChatGPTで応答生成開始');
+      responseText = await generateChatGPTResponse(userMessage);
+      console.log('ChatGPT応答生成成功:', responseText);
+    } catch (error) {
+      console.error('ChatGPTエラー:', error);
+      // エラー時はフォールバックメッセージ
+      responseText = `申し訳ありません、処理中にエラーが発生しました。後ほどお試しください。\n\n内部エラー: ${error.message || '不明'}`;
+    }
+  }
+  
+  // 応答が長すぎる場合は切り減らす
+  if (responseText.length > 2000) {
+    responseText = responseText.substring(0, 1997) + '...';
+    console.log('応答が長すぎるため切り詰めました');
   }
   
   console.log('送信する応答:', responseText);
