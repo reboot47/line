@@ -62,6 +62,10 @@ app.post('/webhook', (req, res) => {
   setTimeout(async () => {
     try {
       console.log('Webhook called - processing events');
+      console.log('Environment variables check:');
+      console.log('- LINE_CHANNEL_SECRET exists:', !!process.env.LINE_CHANNEL_SECRET);
+      console.log('- LINE_CHANNEL_ACCESS_TOKEN exists:', !!process.env.LINE_CHANNEL_ACCESS_TOKEN);
+      console.log('- OPENAI_API_KEY exists:', !!process.env.OPENAI_API_KEY);
       
       // 検証リクエストや空リクエストの場合は無視
       if (!req.body || !req.body.events || req.body.events.length === 0) {
@@ -69,15 +73,27 @@ app.post('/webhook', (req, res) => {
         return;
       }
 
-      console.log(`Processing ${req.body.events.length} events`);
+      console.log(`Processing ${req.body.events.length} events:`, JSON.stringify(req.body.events));
       
       // 各イベントを非同期で処理
       for (const event of req.body.events) {
         try {
-          await handleEvent(event);
-          console.log('Event processed successfully:', event.type);
+          console.log('Processing event:', JSON.stringify(event));
+          const result = await handleEvent(event);
+          console.log('Event processed successfully:', event.type, 'Result:', JSON.stringify(result));
         } catch (err) {
           console.error('Error processing event:', err);
+          
+          // 別のメッセージでフォールバック応答
+          try {
+            await client.replyMessage(event.replyToken, {
+              type: 'text',
+              text: '申し訳ありません、エラーが発生しました。後ほどお試しください。'
+            });
+            console.log('Fallback message sent successfully');
+          } catch (replyError) {
+            console.error('Failed to send fallback message:', replyError);
+          }
         }
       }
     } catch (error) {
@@ -97,26 +113,40 @@ function validateSignature(body, channelSecret, signature) {
 
 // イベントハンドラー
 async function handleEvent(event) {
+  // 各イベントの詳細情報を出力
+  console.log('Event details:', JSON.stringify(event));
+  
   // メッセージイベント以外は無視
   if (event.type !== 'message' || event.message.type !== 'text') {
+    console.log('Skipping non-text message event');
     return Promise.resolve(null);
   }
 
   // 受信したメッセージ
   const receivedMessage = event.message.text;
+  console.log('Received message:', receivedMessage);
   let replyMessage = '';
 
   // 特定のキーワードの場合は即度応答
   if (receivedMessage.includes('こんにちは')) {
     replyMessage = 'こんにちは！今日も素敵な一日ですね！';
+    console.log('Greeting response generated');
   } else if (receivedMessage.includes('おはよう')) {
     replyMessage = 'おはようございます！素晴らしい朝ですね！';
+    console.log('Morning greeting response generated');
   } else if (receivedMessage.includes('おやすみ')) {
     replyMessage = 'おやすみなさい！良い夢を見てくださいね。';
+    console.log('Night greeting response generated');
+  } else if (receivedMessage.includes('テスト') || receivedMessage.includes('test')) {
+    // テスト用の固定応答
+    replyMessage = 'テストメッセージを受信しました！正常に動作しています。';
+    console.log('Test message response generated');
   } else {
+    console.log('Attempting to generate ChatGPT response');
     try {
       // ChatGPTを使用して応答生成
       replyMessage = await generateChatGPTResponse(receivedMessage);
+      console.log('ChatGPT response generated:', replyMessage);
     } catch (error) {
       console.error('ChatGPT APIエラー:', error);
       // エラー時はフォールバックのランダム応答を返す
@@ -129,6 +159,7 @@ async function handleEvent(event) {
       ];
       const randomIndex = Math.floor(Math.random() * randomResponses.length);
       replyMessage = randomResponses[randomIndex];
+      console.log('Fallback random response generated:', replyMessage);
     }
   }
   
@@ -137,11 +168,20 @@ async function handleEvent(event) {
     replyMessage = replyMessage.substring(0, 1997) + '...';
   }
 
+  console.log('Preparing to send reply:', replyMessage);
+
   // メッセージを返信
-  return client.replyMessage(event.replyToken, {
-    type: 'text',
-    text: replyMessage,
-  });
+  try {
+    const result = await client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: replyMessage,
+    });
+    console.log('Message sent successfully, result:', JSON.stringify(result));
+    return result;
+  } catch (error) {
+    console.error('Error sending reply message:', error);
+    throw error;
+  }
 }
 
 // ChatGPTを使用して応答を生成する関数
@@ -153,8 +193,10 @@ async function generateChatGPTResponse(userMessage) {
     // APIキーが設定されているか確認
     if (!process.env.OPENAI_API_KEY) {
       console.error('OPENAI_API_KEYが設定されていません');
-      return '申し訳ありませんが、現在APIが利用できません。後ほどお試しください。';
+      return '申し訳ありませんが、現在OpenAI APIが設定されていません。ランダム応答モードで対応します。';
     }
+    
+    console.log('OpenAIクライアントの初期化状態確認:', !!openai);
 
     // ChatGPT APIへのリクエスト
     const response = await openai.chat.completions.create({
