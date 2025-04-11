@@ -57,15 +57,41 @@ async function handleEvent(event) {
   const receivedMessage = event.message.text;
   let replyMessage = '';
 
-  // 簡単な応答ロジック
+  // 特定のキーワードへの応答
   if (receivedMessage.includes('こんにちは')) {
-    replyMessage = 'こんにちは！';
+    replyMessage = 'こんにちは！今日も素敵な一日ですね！';
   } else if (receivedMessage.includes('おはよう')) {
-    replyMessage = 'おはようございます！';
+    replyMessage = 'おはようございます！素晴らしい朝ですね！';
   } else if (receivedMessage.includes('おやすみ')) {
-    replyMessage = 'おやすみなさい！';
+    replyMessage = 'おやすみなさい！良い夢を見てくださいね。';
   } else {
-    replyMessage = `「${receivedMessage}」というメッセージを受け取りました！`;
+    // ランダムな応答を生成
+    const randomResponses = [
+      '面白いですね！もっと教えてください！',
+      'なるほど！そういう考え方もありますね。',
+      'それは私も考えたことがあります！',
+      '素晴らしい発想ですね！',
+      'うーん、深いお話ですね...',
+      '今日の天気はどうですか？',
+      'それについて、もっと詳しく聞かせてもらえますか？',
+      '実は私もそう思っていました！',
+      'そうなんですね！知りませんでした！',
+      'びっくりしました！',
+      '素敵なメッセージをありがとうございます！',
+      '考えさせられるお話ですね...',
+      'それは興味深いですね！',
+      'なんとも言えない気持ちです...',
+      'わくわくしますね！',
+      '素晴らしい一日をお過ごしください！',
+      'いつもありがとうございます！',
+      'そんな風に考えたことはありませんでした！',
+      'その調子で頑張ってください！',
+      'あなたのメッセージを読むのは楽しいです！'
+    ];
+
+    // ランダムにインデックスを選択
+    const randomIndex = Math.floor(Math.random() * randomResponses.length);
+    replyMessage = randomResponses[randomIndex];
   }
 
   // メッセージを返信
