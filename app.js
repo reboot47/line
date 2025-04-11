@@ -22,6 +22,13 @@ const openai = new OpenAI({
   dangerouslyAllowBrowser: true  // ブラウザ環境での実行を許可
 });
 
+// OpenAIクライアントの初期化確認
+console.log('サーバー起動時OpenAI初期化確認:', {
+  hasApiKey: !!process.env.OPENAI_API_KEY,
+  apiKeyPrefix: process.env.OPENAI_API_KEY ? `${process.env.OPENAI_API_KEY.substring(0, 7)}...` : 'undefined',
+  clientInitialized: !!openai
+});
+
 // LINEクライアントと Express アプリケーションを作成
 const client = new line.Client(config);
 const app = express();
@@ -159,6 +166,10 @@ async function handleEvent(event) {
     // テスト用の固定応答
     replyMessage = 'テストメッセージを受信しました！正常に動作しています。';
     console.log('Test message response generated');
+  } else if (receivedMessage.includes('debug')) {
+    // デバッグ情報を返す
+    replyMessage = `デバッグ情報:\nOpenAI APIキー: ${process.env.OPENAI_API_KEY ? '設定済み' : '未設定'}\nOpenAIクライアント: ${!!openai ? '初期化済み' : 'エラー'}`;
+    console.log('Debug information response generated');
   } else {
     console.log('Attempting to generate ChatGPT response');
     try {
@@ -206,20 +217,28 @@ async function handleEvent(event) {
 async function generateChatGPTResponse(userMessage) {
   try {
     // リクエストのログ出力
-    console.log('ChatGPT APIにリクエスト開始:', userMessage);
-    console.log('API Key設定状況:', process.env.OPENAI_API_KEY ? 'APIキーあり' : 'APIキーなし');
-    console.log('API Keyの最初の10文字:', process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.substring(0, 10) + '...' : 'なし');
+    console.log('--------ChatGPT APIリクエスト開始--------');
+    console.log('ユーザーメッセージ:', userMessage);
+    console.log('API Key設定状況:', process.env.OPENAI_API_KEY ? '設定あり' : '設定なし');
     
     // APIキーが設定されているか確認
     if (!process.env.OPENAI_API_KEY) {
       console.error('OPENAI_API_KEYが設定されていません');
-      return 'API設定が見つかりません。システム管理者に連絡してください。';
+      return 'システムエラー: API設定がありません';
     }
     
-    console.log('OpenAIクライアントの初期化状態確認:', !!openai);
+    // キーが正しい形式か確認
+    const apiKeyPattern = /^sk-[a-zA-Z0-9]+$/;
+    if (!apiKeyPattern.test(process.env.OPENAI_API_KEY)) {
+      console.error('OPENAI_API_KEYが正しい形式ではありません');
+      console.log('API Key形式:', process.env.OPENAI_API_KEY.substring(0, 10) + '...');
+      return 'システムエラー: APIキーの形式が正しくありません';
+    }
+    
+    console.log('OpenAIクライアント確認:', !!openai ? '初期化済み' : '初期化失敗');
   
-    // より詳細なエラーハンドリングを追加
     try {
+      console.log('OpenAI APIリクエスト送信中...');
       // ChatGPT APIへのリクエスト
       const response = await openai.chat.completions.create({
         model: 'gpt-3.5-turbo',
@@ -238,20 +257,37 @@ async function generateChatGPTResponse(userMessage) {
       });
       
       // 応答を取得
-      console.log('ChatGPT API応答成功:', response.choices[0]?.message?.content);
-      const reply = response.choices[0]?.message?.content || 'レスポンスが空でした。';
-      return reply;
-    } catch (apiError) {
-      console.error('ChatGPT API呼び出しエラー:', apiError);
-      // エラーの詳細情報を表示
-      if (apiError.response) {
-        console.error('APIエラーレスポンス:', JSON.stringify(apiError.response));
+      console.log('OpenAI API応答:', response);
+      console.log('OpenAI API応答文字列:', JSON.stringify(response));
+      console.log('response.choices:', response.choices);
+      
+      if (response.choices && response.choices.length > 0 && response.choices[0].message) {
+        console.log('ChatGPT応答成功:', response.choices[0].message.content);
+        return response.choices[0].message.content.trim();
+      } else {
+        console.error('ChatGPT応答の構造が不正:', response);
+        return '応答の受信中に問題が発生しました。';
       }
-      throw apiError;
+    } catch (apiError) {
+      console.error('ChatGPT APIエラー発生:', apiError);
+      console.error('ChatGPT APIエラー詳細:', JSON.stringify(apiError, null, 2));
+      
+      if (apiError.response) {
+        console.error('APIエラーレスポンス:', JSON.stringify(apiError.response, null, 2));
+      }
+      
+      if (apiError.message && apiError.message.includes('API key')) {
+        return 'システムエラー: APIキーに問題があります。管理者に連絡してください。';
+      } else if (apiError.message && apiError.message.includes('rate limit')) {
+        return 'システムエラー: APIの利用制限に達しました。しばらくしてからお試しください。';
+      } else {
+        return `システムエラー: ${apiError.message || '不明なエラー'}`;
+      }
     }
   } catch (error) {
-    console.error('ChatGPT全体エラー:', error);
-    throw error;
+    console.error('全体エラー:', error);
+    console.error('エラースタック:', error.stack);
+    return 'システムエラーが発生しました。しばらくしてからお試しください。';
   }
 }
 
