@@ -2,11 +2,11 @@
   "name": "line-bot",
   "version": "1.0.0",
   "description": "A simple LINE Bot application",
-  "main": "simple-webhook.js",
+  "main": "app.js",
   "scripts": {
-    "start": "node simple-webhook.js",
-    "dev": "nodemon simple-webhook.js",
-    "full": "node app.js"
+    "start": "node app.js",
+    "dev": "nodemon app.js",
+    "simple": "node simple-webhook.js"
   },
   "dependencies": {
     "@line/bot-sdk": "^7.5.2",

@@ -53,30 +53,33 @@ app.get('/webhook', (req, res) => {
   res.status(200).send('This is a LINE Bot webhook endpoint. POST requests from LINE Platform are accepted.');
 });
 
-// 最も単純なWebhookエンドポイントハンドラー
+// 成功したアプローチをベースにした完全な機能を持つWebhookハンドラー
 app.post('/webhook', (req, res) => {
-  // まず直ちに200レスポンスを返す
+  // 検証成功の要点: 即座に200レスポンスを返す
   res.status(200).send('OK');
 
-  // 非同期で情報処理ログ記録のみ実行
-  setTimeout(() => {
+  // 後続処理を非同期で実行
+  setTimeout(async () => {
     try {
-      console.log('Webhook called - async logging');
-      console.log('Headers:', JSON.stringify(req.headers));
-      console.log('Body exists:', !!req.body);
+      console.log('Webhook called - processing events');
       
       // 検証リクエストや空リクエストの場合は無視
       if (!req.body || !req.body.events || req.body.events.length === 0) {
-        console.log('Webhook verification or empty request - no action needed');
+        console.log('Webhook verification or empty request detected');
         return;
       }
 
-      // 実際にイベント処理を非同期で実行
-      req.body.events.forEach(event => {
-        handleEvent(event)
-          .then(() => console.log('Event handled successfully'))
-          .catch(err => console.error('Error handling event:', err));
-      });
+      console.log(`Processing ${req.body.events.length} events`);
+      
+      // 各イベントを非同期で処理
+      for (const event of req.body.events) {
+        try {
+          await handleEvent(event);
+          console.log('Event processed successfully:', event.type);
+        } catch (err) {
+          console.error('Error processing event:', err);
+        }
+      }
     } catch (error) {
       console.error('Async processing error:', error);
     }
