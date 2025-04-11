@@ -237,7 +237,8 @@ async function generateChatGPTResponse(userMessage) {
     console.log('\n\n********** OpenAI API CALL START **********');
     console.log('ユーザーメッセージ:', userMessage);
     console.log('NODE_VERSION:', process.version);
-    console.log('OPENAI_LIB_VERSION:', require('openai/package.json').version);
+    // Vercel環境ではパッケージ情報を直接取得できないため、コメントアウト
+    // console.log('OPENAI_LIB_VERSION:', require('openai/package.json').version);
 
     // APIキーの詳細確認
     if (!process.env.OPENAI_API_KEY) {
