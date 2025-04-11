@@ -5,6 +5,7 @@ require('dotenv').config();
 const express = require('express');
 const line = require('@line/bot-sdk');
 const bodyParser = require('body-parser');
+const crypto = require('crypto');
 
 // 環境変数の設定を読み込む
 const PORT = process.env.PORT || 3000;
@@ -18,11 +19,12 @@ const client = new line.Client(config);
 const app = express();
 
 // JSON形式のリクエストを処理するためのミドルウェア
-app.use(bodyParser.json());
+app.use(bodyParser.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf.toString();
+  }
+}));
 app.use(bodyParser.urlencoded({ extended: true }));
-
-// リクエストの検証用ミドルウェア
-app.use('/webhook', line.middleware(config));
 
 // ルートエンドポイント
 app.get('/', (req, res) => {
@@ -31,27 +33,49 @@ app.get('/', (req, res) => {
 
 // WebhookエンドポイントのGETリクエスト対応
 app.get('/webhook', (req, res) => {
-  res.send('This is a LINE Bot webhook endpoint. POST requests from LINE Platform are accepted.');
+  res.status(200).send('This is a LINE Bot webhook endpoint. POST requests from LINE Platform are accepted.');
 });
 
 // Webhookエンドポイント
 app.post('/webhook', (req, res) => {
-  console.log('Webhook called - body exists:', !!req.body);
+  console.log('Webhook called with request body:', req.body);
   
-  // Webhook検証の場合、空の配列を返す
+  // Webhook検証の場合も200を返す
   if (!req.body || !req.body.events || req.body.events.length === 0) {
-    console.log('Webhook verification or empty events request');
-    return res.status(200).json({ success: true });
+    console.log('Empty request or webhook verification');
+    return res.status(200).end();
+  }
+  
+  // 署名検証を行う
+  try {
+    const signature = req.headers['x-line-signature'];
+    // 署名の検証
+    if (!validateSignature(req.rawBody, config.channelSecret, signature)) {
+      console.log('Invalid signature');
+      return res.status(200).end();
+    }
+  } catch (err) {
+    console.error('Signature validation error:', err);
+    return res.status(200).end();
   }
 
   Promise
     .all(req.body.events.map(handleEvent))
-    .then((result) => res.json(result))
+    .then((result) => res.status(200).json(result))
     .catch((err) => {
       console.error('Error handling webhook:', err);
-      res.status(200).json({ success: true }); // エラー時も200を返す
+      res.status(200).end(); // エラー時も200を返す
     });
 });
+
+// 署名検証関数
+function validateSignature(body, channelSecret, signature) {
+  const hash = crypto
+    .createHmac('sha256', channelSecret)
+    .update(body)
+    .digest('base64');
+  return hash === signature;
+}
 
 // イベントハンドラー
 async function handleEvent(event) {
