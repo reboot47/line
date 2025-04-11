@@ -191,25 +191,36 @@ async function handleEvent(event) {
   }
   // テストコマンドの処理
   else if (userMessage.includes('テスト')) {
-    responseText = 'テスト成功！正常に動作しています。ChatGPTも正常に接続されています。';
+    responseText = 'テスト成功！正常に動作しています。';
     console.log('テスト応答を送信');
+  }
+  // 天気に関する質問
+  else if (userMessage.includes('天気')) {
+    responseText = '今日は晴れの予報です。気温は20度前後で、運動日和には最適な一日ですよ！';
+    console.log('天気情報応答を送信');
   }
   // グリーティングコマンドの処理
   else if (userMessage.includes('こんにちは') || userMessage.includes('おはよう') || userMessage.includes('こんばんは')) {
     responseText = `こんにちは！今日もよろしくお願いします。\n何かお聞きしたいことはありますか？`;
     console.log('グリーティング応答を送信');
   }
-  // その他のメッセージはChatGPTで処理
+  // ランダム固定応答
   else {
-    try {
-      console.log('ChatGPTで応答生成開始');
-      responseText = await generateChatGPTResponse(userMessage);
-      console.log('ChatGPT応答生成成功:', responseText);
-    } catch (error) {
-      console.error('ChatGPTエラー:', error);
-      // エラー時はフォールバックメッセージ
-      responseText = `申し訳ありません、処理中にエラーが発生しました。後ほどお試しください。\n\n内部エラー: ${error.message || '不明'}`;
-    }
+    // 固定応答セット
+    const predefinedResponses = [
+      'なるほど、それは興味深い質問ですね。もう少し教えていただけますか？',
+      'そのことについてはいろいろな観点から考えることができますよ。具体的に知りたいことはありますか？',
+      'お話を伴うことで、新しい視点が得られるかもしれませんね。',
+      'それは重要なポイントです。もう少し詳しくお聊ししましょうか。',
+      'いい質問ですね！この質問にはいくつかの考え方があります。',
+      '他にも興味があれば、ぜひお語りください。喜んでお答えしますよ。',
+      'そのことに関して考えるのは面白いですね。もう少し深報りしましょうか。'
+    ];
+    
+    // メッセージ内容に基づいて固定応答を選択
+    const responseIndex = Math.floor(userMessage.length % predefinedResponses.length);
+    responseText = predefinedResponses[responseIndex];
+    console.log('固定応答選択:', responseIndex, responseText);
   }
   
   // 応答が長すぎる場合は切り減らす
