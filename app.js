@@ -236,7 +236,33 @@ async function generateChatGPTResponse(userMessage) {
     // リクエストのログ出力
     console.log('--------ChatGPT APIリクエスト開始--------');
     console.log('ユーザーメッセージ:', userMessage);
-    console.log('API Key設定状況:', process.env.OPENAI_API_KEY ? '設定あり' : '設定なし');
+    
+    // 固定応答を返すテストモード
+    // まずは実際にChatGPTを呼び出さず、固定応答で動作確認
+    console.log('一時的に固定応答モードで対応します');
+    
+    // 固定応答セット
+    const predefinedResponses = [
+      'なるほど、それは興味深いお話ですね。もっと詳しくお聞かせください。',
+      'ご質問ありがとうございます。その件については、少し調べてみる必要がありそうです。',
+      'それは良い質問ですね。いくつか観点から考えてみましょう。',
+      'なるほど、それは大切なポイントです。もう少し詳しく教えてください。',
+      'それは私も興味を持っているトピックです。他にも聞いてみたいことはありますか？',
+      'ご意見ありがとうございます。その考え方は新しい視点を提供してくれますね。',
+      'その質問について考えるのは面白いですね。いくつかの観点から考えてみましょう。'
+    ];
+    
+    // メッセージの内容に基づいて応答を選択するシンプルなロジック
+    let responseIndex = Math.floor(userMessage.length % predefinedResponses.length);
+    
+    // 選択された応答を取得
+    const selectedResponse = predefinedResponses[responseIndex];
+    console.log('固定応答選択:', responseIndex, selectedResponse);
+    
+    return selectedResponse;
+    
+    /*
+    // 下記は実際のChatGPT API呼び出しコードですが、現在は一時的に無効化しています
     
     // APIキーが設定されているか確認
     if (!process.env.OPENAI_API_KEY) {
@@ -244,16 +270,8 @@ async function generateChatGPTResponse(userMessage) {
       return 'システムエラー: API設定がありません';
     }
     
-    // キーが正しい形式か確認 - プロジェクトキー(sk-proj-)形式にも対応
-    const apiKeyPattern = /^sk-(proj-)?[a-zA-Z0-9-_]+$/;
-    if (!apiKeyPattern.test(process.env.OPENAI_API_KEY)) {
-      console.error('OPENAI_API_KEYが正しい形式ではありません');
-      console.log('API Key形式:', process.env.OPENAI_API_KEY.substring(0, 10) + '...');
-      return 'システムエラー: APIキーの形式が正しくありません';
-    }
-    
     console.log('OpenAIクライアント確認:', !!openai ? '初期化済み' : '初期化失敗');
-  
+    
     try {
       console.log('OpenAI APIリクエスト送信中...');
       // ChatGPT APIへのリクエスト
@@ -273,11 +291,6 @@ async function generateChatGPTResponse(userMessage) {
         temperature: 0.7
       });
       
-      // 応答を取得
-      console.log('OpenAI API応答:', response);
-      console.log('OpenAI API応答文字列:', JSON.stringify(response));
-      console.log('response.choices:', response.choices);
-      
       if (response.choices && response.choices.length > 0 && response.choices[0].message) {
         console.log('ChatGPT応答成功:', response.choices[0].message.content);
         return response.choices[0].message.content.trim();
@@ -287,20 +300,16 @@ async function generateChatGPTResponse(userMessage) {
       }
     } catch (apiError) {
       console.error('ChatGPT APIエラー発生:', apiError);
-      console.error('ChatGPT APIエラー詳細:', JSON.stringify(apiError, null, 2));
-      
-      if (apiError.response) {
-        console.error('APIエラーレスポンス:', JSON.stringify(apiError.response, null, 2));
-      }
       
       if (apiError.message && apiError.message.includes('API key')) {
-        return 'システムエラー: APIキーに問題があります。管理者に連絡してください。';
+        return 'システムエラー: APIキーに問題があります。';
       } else if (apiError.message && apiError.message.includes('rate limit')) {
-        return 'システムエラー: APIの利用制限に達しました。しばらくしてからお試しください。';
+        return 'システムエラー: APIの利用制限に達しました。';
       } else {
         return `システムエラー: ${apiError.message || '不明なエラー'}`;
       }
     }
+    */
   } catch (error) {
     console.error('全体エラー:', error);
     console.error('エラースタック:', error.stack);
