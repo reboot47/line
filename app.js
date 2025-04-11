@@ -19,6 +19,7 @@ const config = {
 // OpenAI APIクライアントの初期化
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY, // 環境変数からAPIキーを読み込む
+  dangerouslyAllowBrowser: true  // ブラウザ環境での実行を許可
 });
 
 // LINEクライアントと Express アプリケーションを作成
@@ -79,18 +80,35 @@ app.post('/webhook', (req, res) => {
       for (const event of req.body.events) {
         try {
           console.log('Processing event:', JSON.stringify(event));
+          console.log('Event type:', event.type);  // 追加デバッグ情報
+          console.log('Event source:', JSON.stringify(event.source));  // ソース情報
+          
+          if (event.type === 'message') {
+            console.log('Message type:', event.message.type);
+            if (event.message.type === 'text') {
+              console.log('Message content:', event.message.text);
+            }
+          }
+          
+          // イベントを処理
           const result = await handleEvent(event);
           console.log('Event processed successfully:', event.type, 'Result:', JSON.stringify(result));
         } catch (err) {
           console.error('Error processing event:', err);
+          console.error('Error stack:', err.stack);  // スタック追跡を表示
           
           // 別のメッセージでフォールバック応答
           try {
-            await client.replyMessage(event.replyToken, {
-              type: 'text',
-              text: '申し訳ありません、エラーが発生しました。後ほどお試しください。'
-            });
-            console.log('Fallback message sent successfully');
+            // eventが有効で、replyTokenがある場合のみ実行
+            if (event && event.replyToken) {
+              await client.replyMessage(event.replyToken, {
+                type: 'text',
+                text: '申し訳ありません、エラーが発生しました。後ほどお試しください。'
+              });
+              console.log('Fallback message sent successfully');
+            } else {
+              console.error('Invalid event or missing replyToken:', event);
+            }
           } catch (replyError) {
             console.error('Failed to send fallback message:', replyError);
           }
@@ -188,39 +206,51 @@ async function handleEvent(event) {
 async function generateChatGPTResponse(userMessage) {
   try {
     // リクエストのログ出力
-    console.log('ChatGPT APIにリクエスト中:', userMessage);
+    console.log('ChatGPT APIにリクエスト開始:', userMessage);
+    console.log('API Key設定状況:', process.env.OPENAI_API_KEY ? 'APIキーあり' : 'APIキーなし');
+    console.log('API Keyの最初の10文字:', process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.substring(0, 10) + '...' : 'なし');
     
     // APIキーが設定されているか確認
     if (!process.env.OPENAI_API_KEY) {
       console.error('OPENAI_API_KEYが設定されていません');
-      return '申し訳ありませんが、現在OpenAI APIが設定されていません。ランダム応答モードで対応します。';
+      return 'API設定が見つかりません。システム管理者に連絡してください。';
     }
     
     console.log('OpenAIクライアントの初期化状態確認:', !!openai);
-
-    // ChatGPT APIへのリクエスト
-    const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages: [
-        {
-          role: 'system',
-          content: 'あなたは助けになるフレンドリーなチャットボットです。日本語で短く、親しみやすく、そして有益な情報を提供してください。答えは100字程度に収めてください。'
-        },
-        {
-          role: 'user',
-          content: userMessage
-        }
-      ],
-      max_tokens: 500,
-      temperature: 0.7
-    });
-
-    // 応答を取得
-    const reply = response.choices[0].message.content.trim();
-    console.log('ChatGPT応答:', reply);
-    return reply;
+  
+    // より詳細なエラーハンドリングを追加
+    try {
+      // ChatGPT APIへのリクエスト
+      const response = await openai.chat.completions.create({
+        model: 'gpt-3.5-turbo',
+        messages: [
+          {
+            role: 'system',
+            content: 'あなたは助けになるフレンドリーなチャットボットです。日本語で短く、親しみやすく、そして有益な情報を提供してください。答えは100字程度に収めてください。'
+          },
+          {
+            role: 'user',
+            content: userMessage
+          }
+        ],
+        max_tokens: 500,
+        temperature: 0.7
+      });
+      
+      // 応答を取得
+      console.log('ChatGPT API応答成功:', response.choices[0]?.message?.content);
+      const reply = response.choices[0]?.message?.content || 'レスポンスが空でした。';
+      return reply;
+    } catch (apiError) {
+      console.error('ChatGPT API呼び出しエラー:', apiError);
+      // エラーの詳細情報を表示
+      if (apiError.response) {
+        console.error('APIエラーレスポンス:', JSON.stringify(apiError.response));
+      }
+      throw apiError;
+    }
   } catch (error) {
-    console.error('ChatGPT APIエラー:', error);
+    console.error('ChatGPT全体エラー:', error);
     throw error;
   }
 }
