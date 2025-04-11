@@ -2,10 +2,10 @@
   "name": "line-bot",
   "version": "1.0.0",
   "description": "A simple LINE Bot application",
-  "main": "app.js",
+  "main": "minimal.js",
   "scripts": {
-    "start": "node app.js",
-    "dev": "nodemon app.js",
+    "start": "node minimal.js",
+    "dev": "nodemon minimal.js",
     "simple": "node simple-webhook.js"
   },
   "dependencies": {
