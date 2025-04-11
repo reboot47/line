@@ -63,11 +63,30 @@ app.get('/webhook', (req, res) => {
 
 // 成功したアプローチをベースにした完全な機能を持つWebhookハンドラー
 app.post('/webhook', (req, res) => {
-  // 検証成功の要点: 即座に200レスポンスを返す
+  console.log('\n\n=== Webhookを受信しました ===');
+  console.log('現在時刻:', new Date().toISOString());
+  
+  // 即度に200レスポンスを返す
   res.status(200).send('OK');
-
-  // 後続処理を非同期で実行
+  console.log('200 OKレスポンスを送信しました');
+  
+  // リクエストの構造をログ出力
+  const hasEvents = req.body && req.body.events && Array.isArray(req.body.events);
+  console.log('Webhookの構造:', { 
+    hasBody: !!req.body, 
+    hasEvents: hasEvents,
+    eventCount: hasEvents ? req.body.events.length : 0 
+  });
+  
+  // 非同期でイベントを処理
   setTimeout(async () => {
+    console.log('非同期処理が開始されました');
+    // イベントの配列を確認
+    if (!req.body || !req.body.events || !Array.isArray(req.body.events)) {
+      console.error('無効なリクエスト本文:', req.body);
+      return;
+    }
+    
     try {
       console.log('Webhook called - processing events');
       console.log('Environment variables check:');
@@ -138,17 +157,72 @@ function validateSignature(body, channelSecret, signature) {
 
 // イベントハンドラー
 async function handleEvent(event) {
-  // 各イベントの詳細情報を出力
-  console.log('Event details:', JSON.stringify(event));
+  console.log('=== handleEvent関数に入りました ===');
+  console.log('イベントタイプ:', event.type);
   
-  // メッセージイベント以外は無視
+  // テキストメッセージ以外のイベントの場合は処理しない
   if (event.type !== 'message' || event.message.type !== 'text') {
-    console.log('Skipping non-text message event');
+    console.log('テキストメッセージ以外のイベントなので処理しません');
     return Promise.resolve(null);
   }
 
+  // ユーザーからのメッセージを取得
+  const userMessage = event.message.text;
+  console.log('受信メッセージ:', userMessage);
+  
+  // デバッグメッセージの場合は即度に応答
+  if (userMessage.toLowerCase().includes('debug')) {
+    console.log('デバッグモードを検出');
+    const debugInfo = {
+      openaiApiKey: process.env.OPENAI_API_KEY ? '設定済み' : '未設定',
+      keyPrefix: process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.substring(0, 7) + '...' : 'なし',
+      openaiClient: !!openai ? '初期化済み' : '初期化失敗',
+      timestamp: new Date().toISOString(),
+      nodeVersion: process.version,
+      environment: process.env.NODE_ENV || 'development'
+    };
+    
+    const debugResponse = `デバッグ情報:\n
+- OpenAI API: ${debugInfo.openaiApiKey}\n
+- キー形式: ${debugInfo.keyPrefix}\n
+- クライアント: ${debugInfo.openaiClient}\n
+- 環境: ${debugInfo.environment}\n
+- 時刻: ${debugInfo.timestamp}`;
+    
+    console.log('デバッグ応答を送信:', debugResponse);
+    
+    return client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: debugResponse
+    }).catch((error) => {
+      console.error('デバッグ応答送信エラー:', error);
+      throw error;
+    });
+  }
+  
+  // 通常のメッセージ処理
+  console.log('processUserMessageを呼び出します');
+  let replyMessage = await processUserMessage(userMessage);
+  console.log('生成された応答:', replyMessage);
+  
+  // メッセージを送信
+  console.log('LINEに応答送信します');
+  return client.replyMessage(event.replyToken, {
+    type: 'text',
+    text: replyMessage
+  }).catch((error) => {
+    console.error('Error replying to message:', error);
+    throw error;
+  });
+}
+
+// ユーザーのメッセージを処理する関数
+async function processUserMessage(userMessage) {
+  // 各イベントの詳細情報を出力
+  console.log('Event details:', JSON.stringify({ userMessage }));
+  
   // 受信したメッセージ
-  const receivedMessage = event.message.text;
+  const receivedMessage = userMessage;
   console.log('Received message:', receivedMessage);
   let replyMessage = '';
 
@@ -166,10 +240,6 @@ async function handleEvent(event) {
     // テスト用の固定応答
     replyMessage = 'テストメッセージを受信しました！正常に動作しています。';
     console.log('Test message response generated');
-  } else if (receivedMessage.includes('debug')) {
-    // デバッグ情報を返す
-    replyMessage = `デバッグ情報:\nOpenAI APIキー: ${process.env.OPENAI_API_KEY ? '設定済み' : '未設定'}\nOpenAIクライアント: ${!!openai ? '初期化済み' : 'エラー'}`;
-    console.log('Debug information response generated');
   } else {
     console.log('Attempting to generate ChatGPT response');
     try {
