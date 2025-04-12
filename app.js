@@ -211,20 +211,8 @@ async function handleEvent(event) {
       console.log('ChatGPT応答を受信:', responseText);
     } catch (error) {
       console.error('ChatGPT応答生成エラー:', error);
-      const predefinedResponses = [
-        'なるほど、それは興味深い質問ですね。もう少し教えていただけますか？',
-        'そのことについてはいろいろな観点から考えることができますよ。具体的に知りたいことはありますか？',
-        'お話を伴うことで、新しい視点が得られるかもしれませんね。',
-        'それは重要なポイントです。もう少し詳しくお聊ししましょうか。',
-        'いい質問ですね！この質問にはいくつかの考え方があります。',
-        '他にも興味があれば、ぜひお語りください。喜んでお答えしますよ。',
-        'そのことに関して考えるのは面白いですね。もう少し深報りしましょうか。'
-      ];
-      
-      // メッセージ内容に基づいて固定応答を選択
-      const responseIndex = Math.floor(userMessage.length % predefinedResponses.length);
-      responseText = predefinedResponses[responseIndex];
-      console.log('エラーのため固定応答を使用:', responseIndex, responseText);
+      responseText = `[デバッグ情報] ChatGPT APIエラー: ${error.message}`;
+      console.log('エラーメッセージを返信:', responseText);
     }
   }
   
@@ -253,13 +241,12 @@ async function generateChatGPTResponse(userMessage) {
     console.log('\n\n********** OpenAI API CALL START **********');
     console.log('ユーザーメッセージ:', userMessage);
     console.log('NODE_VERSION:', process.version);
-    // Vercel環境ではパッケージ情報を直接取得できないため、コメントアウト
-    // console.log('OPENAI_LIB_VERSION:', require('openai/package.json').version);
 
     // APIキーの詳細確認
     if (!process.env.OPENAI_API_KEY) {
-      console.error('OPENAI_API_KEYが設定されていません');
-      return 'エラー詳細: OpenAI APIキーが設定されていません。環境変数を確認してください。';
+      const errorMsg = 'OPENAI_API_KEYが設定されていません。環境変数を確認してください。';
+      console.error(errorMsg);
+      throw new Error(errorMsg);
     }
 
     // APIキーの形式確認 - 安全なsubstring呼び出し
@@ -270,70 +257,42 @@ async function generateChatGPTResponse(userMessage) {
       initialized: !!openai,
       hasAPIKey: openai && !!openai.apiKey,
       baseURL: openai && openai.baseURL ? openai.baseURL : 'default'
-      // defaultHeadersの詳細は安全のため省略
     });
 
     // APIにリクエストを送信
     console.log('APIリクエスト送信開始...');
     
-    try {
-      // シンプルなリクエスト構成 – 既知のモデルを使用
-      const response = await openai.chat.completions.create({
-        model: 'gpt-3.5-turbo', // 最も標準的なモデル
-        messages: [
-          { role: 'system', content: 'あなたは日本語で答えるチャットボットです。短く答えてください。' },
-          { role: 'user', content: userMessage }
-        ],
-        max_tokens: 150,
-        temperature: 0.5
-      });
-      
-      console.log('APIレスポンス受信成功!');
-      console.log('レスポンス構造:', response ? JSON.stringify(response, null, 2).substring(0, 200) + '...' : '空のレスポンス');
-      
-      // 応答テキストの取得
-      if (response.choices && response.choices.length > 0 && response.choices[0].message) {
-        const reply = response.choices[0].message.content.trim();
-        console.log('ChatGPT応答テキスト:', reply);
-        return reply;
-      } else {
-        console.error('レスポンスからテキストを取得できませんでした:', JSON.stringify(response));
-        return 'システムエラー: OpenAIからの応答データが不正です。';
-      }
-    } catch (apiError) {
-      // 詳細なエラー情報の取得とログ出力
-      console.error('\n*** OPENAI API ERROR ***');
-      console.error('Error message:', apiError.message);
-      console.error('Error name:', apiError.name);
-      console.error('Error stack:', apiError.stack);
-      
-      // エラーレスポンスがあれば詳細を出力
-      if (apiError.response) {
-        console.error('API Error Response:', JSON.stringify(apiError.response, null, 2));
-      }
-      
-      // エラーコードによる処理
-      let errorMessage = 'エラー: ';
-      
-      if (apiError.message.includes('API key')) {
-        errorMessage += 'APIキーが無効です。エラーメッセージ: ' + apiError.message;
-      } else if (apiError.message.includes('rate limit')) {
-        errorMessage += 'APIのレート制限に達しました。エラーメッセージ: ' + apiError.message;
-      } else if (apiError.message.includes('timeout')) {
-        errorMessage += 'リクエストがタイムアウトしました。エラーメッセージ: ' + apiError.message;
-      } else {
-        errorMessage += '予期しないエラーが発生しました。エラーメッセージ: ' + apiError.message;
-      }
-      
-      // エラー内容を返す
-      return errorMessage;
+    // シンプルなリクエスト構成 – 既知のモデルを使用
+    const response = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo', // 最も標準的なモデル
+      messages: [
+        { role: 'system', content: 'あなたは日本語で答えるチャットボットです。短く答えてください。' },
+        { role: 'user', content: userMessage }
+      ],
+      max_tokens: 150,
+      temperature: 0.7
+    });
+    
+    console.log('APIレスポンス受信成功!');
+    console.log('レスポンス構造:', response ? JSON.stringify(response, null, 2).substring(0, 200) + '...' : '空のレスポンス');
+    
+    // 応答テキストの取得
+    if (response.choices && response.choices.length > 0 && response.choices[0].message) {
+      const reply = response.choices[0].message.content.trim();
+      console.log('ChatGPT応答テキスト:', reply);
+      return reply;
+    } else {
+      const errorMsg = 'OpenAIからの応答データが不正です: ' + JSON.stringify(response);
+      console.error(errorMsg);
+      throw new Error(errorMsg);
     }
   } catch (error) {
-    // 全体的なエラーハンドリング
-    console.error('\n*** GLOBAL ERROR ***');
-    console.error('Error:', error);
-    console.error('Stack:', error.stack);
-    return '重大エラー: システムエラーが発生しました。エラーメッセージ: ' + error.message;
+    console.error('\n*** OPENAI API ERROR ***');
+    console.error('Error message:', error.message);
+    console.error('Error name:', error.name);
+    console.error('Error stack:', error.stack);
+    
+    throw error;
   }
 }
 
