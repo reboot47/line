@@ -204,23 +204,28 @@ async function handleEvent(event) {
     responseText = `こんにちは！今日もよろしくお願いします。\n何かお聞きしたいことはありますか？`;
     console.log('グリーティング応答を送信');
   }
-  // ランダム固定応答
   else {
-    // 固定応答セット
-    const predefinedResponses = [
-      'なるほど、それは興味深い質問ですね。もう少し教えていただけますか？',
-      'そのことについてはいろいろな観点から考えることができますよ。具体的に知りたいことはありますか？',
-      'お話を伴うことで、新しい視点が得られるかもしれませんね。',
-      'それは重要なポイントです。もう少し詳しくお聊ししましょうか。',
-      'いい質問ですね！この質問にはいくつかの考え方があります。',
-      '他にも興味があれば、ぜひお語りください。喜んでお答えしますよ。',
-      'そのことに関して考えるのは面白いですね。もう少し深報りしましょうか。'
-    ];
-    
-    // メッセージ内容に基づいて固定応答を選択
-    const responseIndex = Math.floor(userMessage.length % predefinedResponses.length);
-    responseText = predefinedResponses[responseIndex];
-    console.log('固定応答選択:', responseIndex, responseText);
+    try {
+      console.log('ChatGPTを使用して応答を生成します');
+      responseText = await generateChatGPTResponse(userMessage);
+      console.log('ChatGPT応答を受信:', responseText);
+    } catch (error) {
+      console.error('ChatGPT応答生成エラー:', error);
+      const predefinedResponses = [
+        'なるほど、それは興味深い質問ですね。もう少し教えていただけますか？',
+        'そのことについてはいろいろな観点から考えることができますよ。具体的に知りたいことはありますか？',
+        'お話を伴うことで、新しい視点が得られるかもしれませんね。',
+        'それは重要なポイントです。もう少し詳しくお聊ししましょうか。',
+        'いい質問ですね！この質問にはいくつかの考え方があります。',
+        '他にも興味があれば、ぜひお語りください。喜んでお答えしますよ。',
+        'そのことに関して考えるのは面白いですね。もう少し深報りしましょうか。'
+      ];
+      
+      // メッセージ内容に基づいて固定応答を選択
+      const responseIndex = Math.floor(userMessage.length % predefinedResponses.length);
+      responseText = predefinedResponses[responseIndex];
+      console.log('エラーのため固定応答を使用:', responseIndex, responseText);
+    }
   }
   
   // 応答が長すぎる場合は切り減らす
