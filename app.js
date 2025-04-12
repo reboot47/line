@@ -18,9 +18,16 @@ const config = {
 
 // OpenAI APIクライアントの初期化
 // シンプルな設定にして問題を最小化
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY, // 環境変数からAPIキーを読み込む
-});
+const openai = process.env.OPENAI_API_KEY 
+  ? new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY, // 環境変数からAPIキーを読み込む
+    })
+  : null;
+
+if (!process.env.OPENAI_API_KEY) {
+  console.error('警告: OPENAI_API_KEYが設定されていません。ChatGPT機能は動作しません。');
+  console.error('Vercel環境では、プロジェクト設定で環境変数を設定してください。');
+}
 
 // OpenAIクライアントの初期化確認
 console.log('サーバー起動時OpenAI初期化確認:', {
@@ -206,9 +213,14 @@ async function handleEvent(event) {
   }
   else {
     try {
-      console.log('ChatGPTを使用して応答を生成します');
-      responseText = await generateChatGPTResponse(userMessage);
-      console.log('ChatGPT応答を受信:', responseText);
+      if (!openai) {
+        responseText = '[デバッグ情報] OpenAI APIキーが設定されていません。環境変数OPENAI_API_KEYを設定してください。';
+        console.log('OpenAIクライアント未初期化のため固定応答を返信:', responseText);
+      } else {
+        console.log('ChatGPTを使用して応答を生成します');
+        responseText = await generateChatGPTResponse(userMessage);
+        console.log('ChatGPT応答を受信:', responseText);
+      }
     } catch (error) {
       console.error('ChatGPT応答生成エラー:', error);
       responseText = `[デバッグ情報] ChatGPT APIエラー: ${error.message}`;
@@ -242,6 +254,12 @@ async function generateChatGPTResponse(userMessage) {
     console.log('ユーザーメッセージ:', userMessage);
     console.log('NODE_VERSION:', process.version);
 
+    if (!openai) {
+      const errorMsg = 'OpenAIクライアントが初期化されていません。OPENAI_API_KEYが設定されているか確認してください。';
+      console.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+
     // APIキーの詳細確認
     if (!process.env.OPENAI_API_KEY) {
       const errorMsg = 'OPENAI_API_KEYが設定されていません。環境変数を確認してください。';
@@ -262,29 +280,34 @@ async function generateChatGPTResponse(userMessage) {
     // APIにリクエストを送信
     console.log('APIリクエスト送信開始...');
     
-    // シンプルなリクエスト構成 – 既知のモデルを使用
-    const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo', // 最も標準的なモデル
-      messages: [
-        { role: 'system', content: 'あなたは日本語で答えるチャットボットです。短く答えてください。' },
-        { role: 'user', content: userMessage }
-      ],
-      max_tokens: 150,
-      temperature: 0.7
-    });
-    
-    console.log('APIレスポンス受信成功!');
-    console.log('レスポンス構造:', response ? JSON.stringify(response, null, 2).substring(0, 200) + '...' : '空のレスポンス');
-    
-    // 応答テキストの取得
-    if (response.choices && response.choices.length > 0 && response.choices[0].message) {
-      const reply = response.choices[0].message.content.trim();
-      console.log('ChatGPT応答テキスト:', reply);
-      return reply;
-    } else {
-      const errorMsg = 'OpenAIからの応答データが不正です: ' + JSON.stringify(response);
-      console.error(errorMsg);
-      throw new Error(errorMsg);
+    try {
+      // シンプルなリクエスト構成 – 既知のモデルを使用
+      const response = await openai.chat.completions.create({
+        model: 'gpt-3.5-turbo', // 最も標準的なモデル
+        messages: [
+          { role: 'system', content: 'あなたは日本語で答えるチャットボットです。短く答えてください。' },
+          { role: 'user', content: userMessage }
+        ],
+        max_tokens: 150,
+        temperature: 0.7
+      });
+      
+      console.log('APIレスポンス受信成功!');
+      console.log('レスポンス構造:', response ? JSON.stringify(response, null, 2).substring(0, 200) + '...' : '空のレスポンス');
+      
+      // 応答テキストの取得
+      if (response.choices && response.choices.length > 0 && response.choices[0].message) {
+        const reply = response.choices[0].message.content.trim();
+        console.log('ChatGPT応答テキスト:', reply);
+        return reply;
+      } else {
+        const errorMsg = 'OpenAIからの応答データが不正です: ' + JSON.stringify(response);
+        console.error(errorMsg);
+        throw new Error(errorMsg);
+      }
+    } catch (apiError) {
+      console.error('OpenAI API呼び出しエラー:', apiError);
+      throw apiError;
     }
   } catch (error) {
     console.error('\n*** OPENAI API ERROR ***');
