@@ -18,9 +18,16 @@ const config = {
 
 // OpenAI APIクライアントの初期化
 // シンプルな設定にして問題を最小化
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY, // 環境変数からAPIキーを読み込む
-});
+const openai = process.env.OPENAI_API_KEY 
+  ? new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY, // 環境変数からAPIキーを読み込む
+    })
+  : null;
+
+if (!process.env.OPENAI_API_KEY) {
+  console.error('警告: OPENAI_API_KEYが設定されていません。ChatGPT機能は動作しません。');
+  console.error('Vercel環境では、プロジェクト設定で環境変数を設定してください。');
+}
 
 // OpenAIクライアントの初期化確認
 console.log('サーバー起動時OpenAI初期化確認:', {
@@ -204,23 +211,21 @@ async function handleEvent(event) {
     responseText = `こんにちは！今日もよろしくお願いします。\n何かお聞きしたいことはありますか？`;
     console.log('グリーティング応答を送信');
   }
-  // ランダム固定応答
   else {
-    // 固定応答セット
-    const predefinedResponses = [
-      'なるほど、それは興味深い質問ですね。もう少し教えていただけますか？',
-      'そのことについてはいろいろな観点から考えることができますよ。具体的に知りたいことはありますか？',
-      'お話を伴うことで、新しい視点が得られるかもしれませんね。',
-      'それは重要なポイントです。もう少し詳しくお聊ししましょうか。',
-      'いい質問ですね！この質問にはいくつかの考え方があります。',
-      '他にも興味があれば、ぜひお語りください。喜んでお答えしますよ。',
-      'そのことに関して考えるのは面白いですね。もう少し深報りしましょうか。'
-    ];
-    
-    // メッセージ内容に基づいて固定応答を選択
-    const responseIndex = Math.floor(userMessage.length % predefinedResponses.length);
-    responseText = predefinedResponses[responseIndex];
-    console.log('固定応答選択:', responseIndex, responseText);
+    try {
+      if (!openai) {
+        responseText = '[デバッグ情報] OpenAI APIキーが設定されていません。環境変数OPENAI_API_KEYを設定してください。';
+        console.log('OpenAIクライアント未初期化のため固定応答を返信:', responseText);
+      } else {
+        console.log('ChatGPTを使用して応答を生成します');
+        responseText = await generateChatGPTResponse(userMessage);
+        console.log('ChatGPT応答を受信:', responseText);
+      }
+    } catch (error) {
+      console.error('ChatGPT応答生成エラー:', error);
+      responseText = `[デバッグ情報] ChatGPT APIエラー: ${error.message}`;
+      console.log('エラーメッセージを返信:', responseText);
+    }
   }
   
   // 応答が長すぎる場合は切り減らす
@@ -248,13 +253,18 @@ async function generateChatGPTResponse(userMessage) {
     console.log('\n\n********** OpenAI API CALL START **********');
     console.log('ユーザーメッセージ:', userMessage);
     console.log('NODE_VERSION:', process.version);
-    // Vercel環境ではパッケージ情報を直接取得できないため、コメントアウト
-    // console.log('OPENAI_LIB_VERSION:', require('openai/package.json').version);
+
+    if (!openai) {
+      const errorMsg = 'OpenAIクライアントが初期化されていません。OPENAI_API_KEYが設定されているか確認してください。';
+      console.error(errorMsg);
+      throw new Error(errorMsg);
+    }
 
     // APIキーの詳細確認
     if (!process.env.OPENAI_API_KEY) {
-      console.error('OPENAI_API_KEYが設定されていません');
-      return 'エラー詳細: OpenAI APIキーが設定されていません。環境変数を確認してください。';
+      const errorMsg = 'OPENAI_API_KEYが設定されていません。環境変数を確認してください。';
+      console.error(errorMsg);
+      throw new Error(errorMsg);
     }
 
     // APIキーの形式確認 - 安全なsubstring呼び出し
@@ -265,7 +275,6 @@ async function generateChatGPTResponse(userMessage) {
       initialized: !!openai,
       hasAPIKey: openai && !!openai.apiKey,
       baseURL: openai && openai.baseURL ? openai.baseURL : 'default'
-      // defaultHeadersの詳細は安全のため省略
     });
 
     // APIにリクエストを送信
@@ -280,7 +289,7 @@ async function generateChatGPTResponse(userMessage) {
           { role: 'user', content: userMessage }
         ],
         max_tokens: 150,
-        temperature: 0.5
+        temperature: 0.7
       });
       
       console.log('APIレスポンス受信成功!');
@@ -292,43 +301,21 @@ async function generateChatGPTResponse(userMessage) {
         console.log('ChatGPT応答テキスト:', reply);
         return reply;
       } else {
-        console.error('レスポンスからテキストを取得できませんでした:', JSON.stringify(response));
-        return 'システムエラー: OpenAIからの応答データが不正です。';
+        const errorMsg = 'OpenAIからの応答データが不正です: ' + JSON.stringify(response);
+        console.error(errorMsg);
+        throw new Error(errorMsg);
       }
     } catch (apiError) {
-      // 詳細なエラー情報の取得とログ出力
-      console.error('\n*** OPENAI API ERROR ***');
-      console.error('Error message:', apiError.message);
-      console.error('Error name:', apiError.name);
-      console.error('Error stack:', apiError.stack);
-      
-      // エラーレスポンスがあれば詳細を出力
-      if (apiError.response) {
-        console.error('API Error Response:', JSON.stringify(apiError.response, null, 2));
-      }
-      
-      // エラーコードによる処理
-      let errorMessage = 'エラー: ';
-      
-      if (apiError.message.includes('API key')) {
-        errorMessage += 'APIキーが無効です。エラーメッセージ: ' + apiError.message;
-      } else if (apiError.message.includes('rate limit')) {
-        errorMessage += 'APIのレート制限に達しました。エラーメッセージ: ' + apiError.message;
-      } else if (apiError.message.includes('timeout')) {
-        errorMessage += 'リクエストがタイムアウトしました。エラーメッセージ: ' + apiError.message;
-      } else {
-        errorMessage += '予期しないエラーが発生しました。エラーメッセージ: ' + apiError.message;
-      }
-      
-      // エラー内容を返す
-      return errorMessage;
+      console.error('OpenAI API呼び出しエラー:', apiError);
+      throw apiError;
     }
   } catch (error) {
-    // 全体的なエラーハンドリング
-    console.error('\n*** GLOBAL ERROR ***');
-    console.error('Error:', error);
-    console.error('Stack:', error.stack);
-    return '重大エラー: システムエラーが発生しました。エラーメッセージ: ' + error.message;
+    console.error('\n*** OPENAI API ERROR ***');
+    console.error('Error message:', error.message);
+    console.error('Error name:', error.name);
+    console.error('Error stack:', error.stack);
+    
+    throw error;
   }
 }
 
