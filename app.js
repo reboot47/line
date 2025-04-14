@@ -6,7 +6,7 @@ const express = require('express');
 const line = require('@line/bot-sdk');
 const bodyParser = require('body-parser');
 const crypto = require('crypto');
-const { OpenAI } = require('openai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const util = require('util');
 
 // 環境変数の設定を読み込む
@@ -16,24 +16,20 @@ const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
 };
 
-// OpenAI APIクライアントの初期化
 // シンプルな設定にして問題を最小化
-const openai = process.env.OPENAI_API_KEY 
-  ? new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY, // 環境変数からAPIキーを読み込む
-    })
+const genAI = process.env.GEMINI_API_KEY 
+  ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) // 環境変数からAPIキーを読み込む
   : null;
 
-if (!process.env.OPENAI_API_KEY) {
-  console.error('警告: OPENAI_API_KEYが設定されていません。ChatGPT機能は動作しません。');
+if (!process.env.GEMINI_API_KEY) {
+  console.error('警告: GEMINI_API_KEYが設定されていません。Gemini AI機能は動作しません。');
   console.error('Vercel環境では、プロジェクト設定で環境変数を設定してください。');
 }
 
-// OpenAIクライアントの初期化確認
-console.log('サーバー起動時OpenAI初期化確認:', {
-  hasApiKey: !!process.env.OPENAI_API_KEY,
-  apiKeyPrefix: process.env.OPENAI_API_KEY ? `${process.env.OPENAI_API_KEY.substring(0, 7)}...` : 'undefined',
-  clientInitialized: !!openai
+console.log('サーバー起動時Gemini AI初期化確認:', {
+  hasApiKey: !!process.env.GEMINI_API_KEY,
+  apiKeyPrefix: process.env.GEMINI_API_KEY ? `${process.env.GEMINI_API_KEY.substring(0, 7)}...` : 'undefined',
+  clientInitialized: !!genAI
 });
 
 // LINEクライアントと Express アプリケーションを作成
@@ -46,7 +42,7 @@ console.log('サーバー起動時の環境変数:', {
   NODE_ENV: process.env.NODE_ENV,
   LINE_CHANNEL_SECRET: process.env.LINE_CHANNEL_SECRET ? '設定あり' : '未設定',
   LINE_CHANNEL_ACCESS_TOKEN: process.env.LINE_CHANNEL_ACCESS_TOKEN ? '設定あり' : '未設定',
-  OPENAI_API_KEY: process.env.OPENAI_API_KEY ? '設定あり' : '未設定'
+  GEMINI_API_KEY: process.env.GEMINI_API_KEY ? '設定あり' : '未設定'
 });
 
 // 生のリクエストデータを取り込むミドルウェア
@@ -179,7 +175,7 @@ async function handleEvent(event) {
   // デバッグ情報の準備
   const debugInfo = {
     time: new Date().toISOString(),
-    openaiKey: process.env.OPENAI_API_KEY ? '✅' : '❌',
+    geminiKey: process.env.GEMINI_API_KEY ? '✅' : '❌',
     lineKey: process.env.LINE_CHANNEL_ACCESS_TOKEN ? '✅' : '❌'
   };
   
@@ -213,17 +209,17 @@ async function handleEvent(event) {
   }
   else {
     try {
-      if (!openai) {
-        responseText = '[デバッグ情報] OpenAI APIキーが設定されていません。環境変数OPENAI_API_KEYを設定してください。';
-        console.log('OpenAIクライアント未初期化のため固定応答を返信:', responseText);
+      if (!genAI) {
+        responseText = '[デバッグ情報] Gemini APIキーが設定されていません。環境変数GEMINI_API_KEYを設定してください。';
+        console.log('Gemini AIクライアント未初期化のため固定応答を返信:', responseText);
       } else {
-        console.log('ChatGPTを使用して応答を生成します');
-        responseText = await generateChatGPTResponse(userMessage);
-        console.log('ChatGPT応答を受信:', responseText);
+        console.log('Gemini AIを使用して応答を生成します');
+        responseText = await generateGeminiResponse(userMessage);
+        console.log('Gemini AI応答を受信:', responseText);
       }
     } catch (error) {
-      console.error('ChatGPT応答生成エラー:', error);
-      responseText = `[デバッグ情報] ChatGPT APIエラー: ${error.message}`;
+      console.error('Gemini AI応答生成エラー:', error);
+      responseText = `[デバッグ情報] Gemini APIエラー: ${error.message}`;
       console.log('エラーメッセージを返信:', responseText);
     }
   }
@@ -246,35 +242,32 @@ async function handleEvent(event) {
   });
 }
 
-// ChatGPTを使用して応答を生成する関数
-async function generateChatGPTResponse(userMessage) {
+async function generateGeminiResponse(userMessage) {
   try {
     // リクエストの詳細ログ出力
-    console.log('\n\n********** OpenAI API CALL START **********');
+    console.log('\n\n********** GEMINI API CALL START **********');
     console.log('ユーザーメッセージ:', userMessage);
     console.log('NODE_VERSION:', process.version);
 
-    if (!openai) {
-      const errorMsg = 'OpenAIクライアントが初期化されていません。OPENAI_API_KEYが設定されているか確認してください。';
+    if (!genAI) {
+      const errorMsg = 'Gemini AIクライアントが初期化されていません。GEMINI_API_KEYが設定されているか確認してください。';
       console.error(errorMsg);
       throw new Error(errorMsg);
     }
 
     // APIキーの詳細確認
-    if (!process.env.OPENAI_API_KEY) {
-      const errorMsg = 'OPENAI_API_KEYが設定されていません。環境変数を確認してください。';
+    if (!process.env.GEMINI_API_KEY) {
+      const errorMsg = 'GEMINI_API_KEYが設定されていません。環境変数を確認してください。';
       console.error(errorMsg);
       throw new Error(errorMsg);
     }
 
     // APIキーの形式確認 - 安全なsubstring呼び出し
-    console.log('API Key形式:', process.env.OPENAI_API_KEY ? (process.env.OPENAI_API_KEY.substring(0, 10) + '...') : '未設定');
+    console.log('API Key形式:', process.env.GEMINI_API_KEY ? (process.env.GEMINI_API_KEY.substring(0, 10) + '...') : '未設定');
     
-    // OpenAIクライアント情報 - 安全な処理
-    console.log('OpenAI Client Info:', {
-      initialized: !!openai,
-      hasAPIKey: openai && !!openai.apiKey,
-      baseURL: openai && openai.baseURL ? openai.baseURL : 'default'
+    console.log('Gemini AI Client Info:', {
+      initialized: !!genAI,
+      hasAPIKey: !!process.env.GEMINI_API_KEY
     });
 
     // APIにリクエストを送信
@@ -282,24 +275,18 @@ async function generateChatGPTResponse(userMessage) {
     
     try {
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('OpenAI APIリクエストがタイムアウトしました（15秒）')), 15000);
+        setTimeout(() => reject(new Error('Gemini APIリクエストがタイムアウトしました（15秒）')), 15000);
       });
       
-      console.log('OpenAI API呼び出し開始...');
+      console.log('Gemini API呼び出し開始...');
       
-      const requestOptions = {
-        model: 'gpt-3.5-turbo-1106', // より安定したモデルを使用
-        messages: [
-          { role: 'system', content: 'あなたは日本語で答えるチャットボットです。短く答えてください。' },
-          { role: 'user', content: userMessage }
-        ],
-        max_tokens: 50, // トークン数を大幅に減らして応答速度を向上
-        temperature: 0.7
-      };
+      const model = genAI.getGenerativeModel({ model: "gemini-pro" });
       
-      console.log('リクエストオプション:', JSON.stringify(requestOptions));
+      const prompt = `あなたは日本語で答えるチャットボットです。短く答えてください。\n\nユーザー: ${userMessage}`;
       
-      const apiRequestPromise = openai.chat.completions.create(requestOptions);
+      console.log('リクエスト内容:', prompt);
+      
+      const apiRequestPromise = model.generateContent(prompt);
       
       console.log('Promise.race開始...');
       const response = await Promise.race([apiRequestPromise, timeoutPromise]);
@@ -308,21 +295,21 @@ async function generateChatGPTResponse(userMessage) {
       console.log('レスポンス構造:', response ? JSON.stringify(response, null, 2).substring(0, 200) + '...' : '空のレスポンス');
       
       // 応答テキストの取得
-      if (response.choices && response.choices.length > 0 && response.choices[0].message) {
-        const reply = response.choices[0].message.content.trim();
-        console.log('ChatGPT応答テキスト:', reply);
+      if (response && response.response) {
+        const reply = response.response.text().trim();
+        console.log('Gemini AI応答テキスト:', reply);
         return reply;
       } else {
-        const errorMsg = 'OpenAIからの応答データが不正です: ' + JSON.stringify(response);
+        const errorMsg = 'Gemini AIからの応答データが不正です: ' + JSON.stringify(response);
         console.error(errorMsg);
         throw new Error(errorMsg);
       }
     } catch (apiError) {
-      console.error('OpenAI API呼び出しエラー:', apiError);
+      console.error('Gemini API呼び出しエラー:', apiError);
       throw apiError;
     }
   } catch (error) {
-    console.error('\n*** OPENAI API ERROR ***');
+    console.error('\n*** GEMINI API ERROR ***');
     console.error('Error message:', error.message);
     console.error('Error name:', error.name);
     console.error('Error stack:', error.stack);

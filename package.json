@@ -9,6 +9,7 @@
     "simple": "node simple-webhook.js"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.0",
     "@line/bot-sdk": "^7.5.2",
     "body-parser": "^1.20.2",
     "dotenv": "^16.0.3",
