@@ -250,6 +250,7 @@ async function generateImage(prompt) {
     fs.writeFileSync(imagePath, Buffer.from(base64Data, 'base64'));
     
     const baseUrl = process.env.BASE_URL || `http://localhost:${PORT}`;
+    console.log('Using BASE_URL:', baseUrl);
     const imageUrl = `${baseUrl}/temp/image_${timestamp}.png`;
     
     console.log('画像生成成功:', imageUrl);
