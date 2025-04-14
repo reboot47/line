@@ -282,13 +282,13 @@ async function generateChatGPTResponse(userMessage) {
     
     try {
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('OpenAI APIリクエストがタイムアウトしました（10秒）')), 10000);
+        setTimeout(() => reject(new Error('OpenAI APIリクエストがタイムアウトしました（15秒）')), 15000);
       });
       
       console.log('OpenAI API呼び出し開始...');
       
       const requestOptions = {
-        model: 'gpt-3.5-turbo', // 最も標準的なモデル
+        model: 'gpt-3.5-turbo-1106', // より安定したモデルを使用
         messages: [
           { role: 'system', content: 'あなたは日本語で答えるチャットボットです。短く答えてください。' },
           { role: 'user', content: userMessage }
