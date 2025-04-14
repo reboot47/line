@@ -130,16 +130,28 @@ async function generateChatGPTResponse(userMessage) {
     // APIリクエスト開始
     console.log('ChatGPT APIリクエスト送信:', userMessage);
     
-    // シンプルなリクエスト
-    const response = await openai.chat.completions.create({
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('OpenAI APIリクエストがタイムアウトしました（10秒）')), 10000);
+    });
+    
+    console.log('OpenAI API呼び出し開始...');
+    
+    const requestOptions = {
       model: 'gpt-3.5-turbo',
       messages: [
         { role: 'system', content: 'あなたは日本語で答えるチャットボットです。短く答えてください。' },
         { role: 'user', content: userMessage }
       ],
-      max_tokens: 150,
+      max_tokens: 50, // トークン数を大幅に減らして応答速度を向上
       temperature: 0.7
-    });
+    };
+    
+    console.log('リクエストオプション:', JSON.stringify(requestOptions));
+    
+    const apiRequestPromise = openai.chat.completions.create(requestOptions);
+    
+    console.log('Promise.race開始...');
+    const response = await Promise.race([apiRequestPromise, timeoutPromise]);
     
     // 応答処理
     if (response.choices && response.choices.length > 0 && response.choices[0].message) {
