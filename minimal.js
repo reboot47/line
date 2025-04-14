@@ -4,7 +4,7 @@
 require('dotenv').config();
 const express = require('express');
 const line = require('@line/bot-sdk');
-const { OpenAI } = require('openai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 // 環境変数の設定を読み込む
 const PORT = process.env.PORT || 3000;
@@ -13,15 +13,12 @@ const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
 };
 
-// OpenAI APIクライアントの初期化
-let openai = null;
+let genAI = null;
 try {
-  openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  });
-  console.log('OpenAI初期化成功');
+  genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  console.log('Gemini AI初期化成功');
 } catch (error) {
-  console.error('OpenAI初期化エラー:', error.message);
+  console.error('Gemini AI初期化エラー:', error.message);
 }
 
 // LINEクライアントと Express アプリケーションを作成
@@ -72,13 +69,12 @@ app.post('/webhook', async (req, res) => {
       } else if (userMessage.includes('こんにちは') || userMessage.includes('おはよう') || userMessage.includes('こんばんは')) {
         replyText = 'こんにちは！何かお手伝いできることはありますか？';
       } else {
-        // ChatGPTで応答生成を試みる
         try {
-          console.log('ChatGPTで応答生成開始');
-          replyText = await generateChatGPTResponse(userMessage);
-          console.log('ChatGPT応答生成成功:', replyText);
+          console.log('Gemini AIで応答生成開始');
+          replyText = await generateGeminiResponse(userMessage);
+          console.log('Gemini AI応答生成成功:', replyText);
         } catch (error) {
-          console.error('ChatGPTエラー:', error);
+          console.error('Gemini AIエラー:', error);
           // エラー時は固定応答にフォールバック
           const predefinedResponses = [
             'なるほど、それは興味深い質問ですね。もう少し教えていただけますか？',
@@ -112,64 +108,55 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-// ChatGPTを使用して応答を生成する関数
-async function generateChatGPTResponse(userMessage) {
+async function generateGeminiResponse(userMessage) {
   try {
-    // OpenAIクライアントの確認
-    if (!openai) {
-      console.error('OpenAIクライアントが初期化されていません');
-      return 'エラー: ChatGPT連携が設定されていません。';
+    if (!genAI) {
+      console.error('Gemini AIクライアントが初期化されていません');
+      return 'エラー: Gemini AI連携が設定されていません。';
     }
 
-    // OpenAI APIキーの確認
-    if (!process.env.OPENAI_API_KEY) {
-      console.error('OPENAI_API_KEYが設定されていません');
-      return 'OpenAI APIキーが設定されていません。';
+    if (!process.env.GEMINI_API_KEY) {
+      console.error('GEMINI_API_KEYが設定されていません');
+      return 'Gemini APIキーが設定されていません。';
     }
 
     // APIリクエスト開始
-    console.log('ChatGPT APIリクエスト送信:', userMessage);
+    console.log('Gemini AI APIリクエスト送信:', userMessage);
     
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('OpenAI APIリクエストがタイムアウトしました（15秒）')), 15000);
+      setTimeout(() => reject(new Error('Gemini APIリクエストがタイムアウトしました（15秒）')), 15000);
     });
     
-    console.log('OpenAI API呼び出し開始...');
+    console.log('Gemini API呼び出し開始...');
     
-    const requestOptions = {
-      model: 'gpt-3.5-turbo-1106', // より安定したモデルを使用
-      messages: [
-        { role: 'system', content: 'あなたは日本語で答えるチャットボットです。短く答えてください。' },
-        { role: 'user', content: userMessage }
-      ],
-      max_tokens: 50, // トークン数を大幅に減らして応答速度を向上
-      temperature: 0.7
-    };
+    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
     
-    console.log('リクエストオプション:', JSON.stringify(requestOptions));
+    const prompt = `あなたは日本語で答えるチャットボットです。短く答えてください。\n\nユーザー: ${userMessage}`;
     
-    const apiRequestPromise = openai.chat.completions.create(requestOptions);
+    console.log('リクエスト内容:', prompt);
+    
+    const apiRequestPromise = model.generateContent(prompt);
     
     console.log('Promise.race開始...');
     const response = await Promise.race([apiRequestPromise, timeoutPromise]);
     
     // 応答処理
-    if (response.choices && response.choices.length > 0 && response.choices[0].message) {
-      const reply = response.choices[0].message.content.trim();
-      console.log('ChatGPT応答テキスト:', reply);
+    if (response && response.response) {
+      const reply = response.response.text().trim();
+      console.log('Gemini AI応答テキスト:', reply);
       return reply;
     } else {
-      console.error('ChatGPT応答形式エラー');
-      return 'エラー: ChatGPTから応答を受け取れませんでした。';
+      console.error('Gemini AI応答形式エラー');
+      return 'エラー: Gemini AIから応答を受け取れませんでした。';
     }
   } catch (error) {
-    console.error('ChatGPTエラー:', error);
-    return `ChatGPTエラー: ${error.message}`;
+    console.error('Gemini AIエラー:', error);
+    return `Gemini AIエラー: ${error.message}`;
   }
 }
 
 // サーバー起動
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
-  console.log(`OpenAI API Key設定状態: ${process.env.OPENAI_API_KEY ? '設定あり' : '未設定'}`);
+  console.log(`Gemini API Key設定状態: ${process.env.GEMINI_API_KEY ? '設定あり' : '未設定'}`);
 });
