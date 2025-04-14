@@ -8,6 +8,9 @@ const bodyParser = require('body-parser');
 const crypto = require('crypto');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const util = require('util');
+const fs = require('fs');
+const path = require('path');
+const axios = require('axios');
 
 // 環境変数の設定を読み込む
 const PORT = process.env.PORT || 3000;
@@ -24,6 +27,11 @@ const genAI = process.env.GEMINI_API_KEY
 if (!process.env.GEMINI_API_KEY) {
   console.error('警告: GEMINI_API_KEYが設定されていません。Gemini AI機能は動作しません。');
   console.error('Vercel環境では、プロジェクト設定で環境変数を設定してください。');
+}
+
+const TEMP_DIR = path.join(__dirname, 'temp');
+if (!fs.existsSync(TEMP_DIR)) {
+  fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
 
 console.log('サーバー起動時Gemini AI初期化確認:', {
@@ -57,6 +65,8 @@ app.use(express.urlencoded({
     req.rawBody = buf.toString();
   }
 }));
+
+app.use('/temp', express.static(TEMP_DIR));
 
 // ルートエンドポイント
 app.get('/', (req, res) => {
@@ -162,84 +172,113 @@ function validateSignature(body, channelSecret, signature) {
 async function handleEvent(event) {
   console.log('イベント処理開始:', JSON.stringify(event));
   
-  // テキストメッセージ以外は処理しない
-  if (event.type !== 'message' || event.message.type !== 'text') {
-    console.log('テキストメッセージ以外のイベントなので処理しません');
+  if (event.type !== 'message') {
+    console.log('メッセージイベント以外なので処理しません');
     return Promise.resolve(null);
   }
 
-  // 受信メッセージ
-  const userMessage = event.message.text;
-  console.log('受信メッセージ:', userMessage);
-  
-  // デバッグ情報の準備
-  const debugInfo = {
-    time: new Date().toISOString(),
-    geminiKey: process.env.GEMINI_API_KEY ? '✅' : '❌',
-    lineKey: process.env.LINE_CHANNEL_ACCESS_TOKEN ? '✅' : '❌'
-  };
-  
-  // キーワードに基づいた応答生成
-  let responseText = '';
-  
-  // デバッグコマンドの処理
-  if (userMessage.toLowerCase().includes('debug')) {
-    responseText = `デバッグ情報:\n
+  if (event.message.type === 'text') {
+    // 受信メッセージ
+    const userMessage = event.message.text;
+    console.log('受信メッセージ:', userMessage);
+    
+    if (userMessage.startsWith('画像:') || userMessage.startsWith('image:')) {
+      const prompt = userMessage.substring(userMessage.indexOf(':') + 1).trim();
+      console.log('画像生成リクエスト:', prompt);
+      
+      try {
+        const imageUrl = await generateImage(prompt);
+        console.log('画像生成成功:', imageUrl);
+        
+        return client.replyMessage(event.replyToken, {
+          type: 'image',
+          originalContentUrl: imageUrl,
+          previewImageUrl: imageUrl
+        }).catch((error) => {
+          console.error('画像送信エラー:', error);
+          throw error;
+        });
+      } catch (error) {
+        console.error('画像生成エラー:', error);
+        return client.replyMessage(event.replyToken, {
+          type: 'text',
+          text: `画像生成エラー: ${error.message}`
+        });
+      }
+    }
+    
+    // デバッグ情報の準備
+    const debugInfo = {
+      time: new Date().toISOString(),
+      geminiKey: process.env.GEMINI_API_KEY ? '✅' : '❌',
+      lineKey: process.env.LINE_CHANNEL_ACCESS_TOKEN ? '✅' : '❌'
+    };
+    
+    // キーワードに基づいた応答生成
+    let responseText = '';
+    
+    // デバッグコマンドの処理
+    if (userMessage.toLowerCase().includes('debug')) {
+      responseText = `デバッグ情報:\n
 - 時刻: ${debugInfo.time}\n
-- OpenAI API: ${debugInfo.openaiKey}\n
+- Gemini API: ${debugInfo.geminiKey}\n
 - LINE API: ${debugInfo.lineKey}\n
 - ノードバージョン: ${process.version}\n
 - 環境: ${process.env.NODE_ENV || 'development'}`;
-    console.log('デバッグ情報を送信:', responseText);
-  }
-  // テストコマンドの処理
-  else if (userMessage.includes('テスト')) {
-    responseText = 'テスト成功！正常に動作しています。';
-    console.log('テスト応答を送信');
-  }
-  // 天気に関する質問
-  else if (userMessage.includes('天気')) {
-    responseText = '今日は晴れの予報です。気温は20度前後で、運動日和には最適な一日ですよ！';
-    console.log('天気情報応答を送信');
-  }
-  // グリーティングコマンドの処理
-  else if (userMessage.includes('こんにちは') || userMessage.includes('おはよう') || userMessage.includes('こんばんは')) {
-    responseText = `こんにちは！今日もよろしくお願いします。\n何かお聞きしたいことはありますか？`;
-    console.log('グリーティング応答を送信');
-  }
-  else {
-    try {
-      if (!genAI) {
-        responseText = '[デバッグ情報] Gemini APIキーが設定されていません。環境変数GEMINI_API_KEYを設定してください。';
-        console.log('Gemini AIクライアント未初期化のため固定応答を返信:', responseText);
-      } else {
-        console.log('Gemini AIを使用して応答を生成します');
-        responseText = await generateGeminiResponse(userMessage);
-        console.log('Gemini AI応答を受信:', responseText);
-      }
-    } catch (error) {
-      console.error('Gemini AI応答生成エラー:', error);
-      responseText = `[デバッグ情報] Gemini APIエラー: ${error.message}`;
-      console.log('エラーメッセージを返信:', responseText);
+      console.log('デバッグ情報を送信:', responseText);
     }
+    // テストコマンドの処理
+    else if (userMessage.includes('テスト')) {
+      responseText = 'テスト成功！正常に動作しています。';
+      console.log('テスト応答を送信');
+    }
+    // 天気に関する質問
+    else if (userMessage.includes('天気')) {
+      responseText = '今日は晴れの予報です。気温は20度前後で、運動日和には最適な一日ですよ！';
+      console.log('天気情報応答を送信');
+    }
+    // グリーティングコマンドの処理
+    else if (userMessage.includes('こんにちは') || userMessage.includes('おはよう') || userMessage.includes('こんばんは')) {
+      responseText = `こんにちは！今日もよろしくお願いします。\n何かお聞きしたいことはありますか？`;
+      console.log('グリーティング応答を送信');
+    }
+    else {
+      try {
+        if (!genAI) {
+          responseText = '[デバッグ情報] Gemini APIキーが設定されていません。環境変数GEMINI_API_KEYを設定してください。';
+          console.log('Gemini AIクライアント未初期化のため固定応答を返信:', responseText);
+        } else {
+          console.log('Gemini AIを使用して応答を生成します');
+          responseText = await generateGeminiResponse(userMessage);
+          console.log('Gemini AI応答を受信:', responseText);
+        }
+      } catch (error) {
+        console.error('Gemini AI応答生成エラー:', error);
+        responseText = `[デバッグ情報] Gemini APIエラー: ${error.message}`;
+        console.log('エラーメッセージを返信:', responseText);
+      }
+    }
+    
+    // 応答が長すぎる場合は切り減らす
+    if (responseText.length > 2000) {
+      responseText = responseText.substring(0, 1997) + '...';
+      console.log('応答が長すぎるため切り詰めました');
+    }
+    
+    console.log('送信する応答:', responseText);
+    
+    // 応答を送信
+    return client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: responseText
+    }).catch((error) => {
+      console.error('メッセージ送信エラー:', error);
+      throw error;
+    });
   }
   
-  // 応答が長すぎる場合は切り減らす
-  if (responseText.length > 2000) {
-    responseText = responseText.substring(0, 1997) + '...';
-    console.log('応答が長すぎるため切り詰めました');
-  }
-  
-  console.log('送信する応答:', responseText);
-  
-  // 応答を送信
-  return client.replyMessage(event.replyToken, {
-    type: 'text',
-    text: responseText
-  }).catch((error) => {
-    console.error('メッセージ送信エラー:', error);
-    throw error;
-  });
+  console.log('テキストメッセージ以外のイベントなので処理しません');
+  return Promise.resolve(null);
 }
 
 async function generateGeminiResponse(userMessage) {
@@ -315,6 +354,76 @@ async function generateGeminiResponse(userMessage) {
     console.error('Error stack:', error.stack);
     
     throw error;
+  }
+}
+
+/**
+ * Imagen APIを使用して画像を生成する関数
+ * @param {string} prompt - 画像生成のためのプロンプト
+ * @returns {Promise<string>} - 生成された画像のURL
+ */
+async function generateImage(prompt) {
+  try {
+    if (!genAI) {
+      throw new Error('Gemini AIクライアントが初期化されていません');
+    }
+
+    if (!process.env.GEMINI_API_KEY) {
+      throw new Error('GEMINI_API_KEYが設定されていません');
+    }
+
+    console.log('画像生成開始:', prompt);
+    
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('画像生成APIリクエストがタイムアウトしました（30秒）')), 30000);
+    });
+    
+    const model = genAI.getGenerativeModel({ model: "imagen-3.0-generate-002" });
+    
+    const translationModel = genAI.getGenerativeModel({ model: "gemini-pro" });
+    const translationPrompt = `以下の日本語テキストを、画像生成AIのための英語プロンプトに翻訳してください。できるだけ詳細に翻訳し、画像生成に適した表現を使ってください。翻訳のみを返してください。\n\n${prompt}`;
+    
+    console.log('翻訳リクエスト送信...');
+    const translationResponse = await translationModel.generateContent(translationPrompt);
+    const englishPrompt = translationResponse.response.text().trim();
+    console.log('翻訳結果:', englishPrompt);
+    
+    console.log('Imagen API呼び出し開始...');
+    
+    const imageRequest = {
+      prompt: englishPrompt,
+      responseFormat: 'url'
+    };
+    
+    const imageRequestPromise = model.generateContent(imageRequest);
+    const response = await Promise.race([imageRequestPromise, timeoutPromise]);
+    
+    if (!response || !response.response) {
+      throw new Error('画像生成に失敗しました: レスポンスが空です');
+    }
+    
+    const imageResult = response.response;
+    const imageData = imageResult.candidates[0].content.parts[0];
+    
+    if (!imageData || !imageData.inlineData || !imageData.inlineData.data) {
+      throw new Error('画像データが見つかりません');
+    }
+    
+    const base64Data = imageData.inlineData.data;
+    
+    const timestamp = Date.now();
+    const imagePath = path.join(TEMP_DIR, `image_${timestamp}.png`);
+    fs.writeFileSync(imagePath, Buffer.from(base64Data, 'base64'));
+    
+    const baseUrl = process.env.BASE_URL || `http://localhost:${PORT}`;
+    console.log('Using BASE_URL:', baseUrl);
+    const imageUrl = `${baseUrl}/temp/image_${timestamp}.png`;
+    
+    console.log('画像生成成功:', imageUrl);
+    return imageUrl;
+  } catch (error) {
+    console.error('画像生成エラー:', error);
+    throw new Error(`画像生成に失敗しました: ${error.message}`);
   }
 }
 
