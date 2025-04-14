@@ -29,9 +29,19 @@ if (!process.env.GEMINI_API_KEY) {
   console.error('Vercel環境では、プロジェクト設定で環境変数を設定してください。');
 }
 
-const TEMP_DIR = path.join(__dirname, 'temp');
+const TEMP_DIR = process.env.NODE_ENV === 'production' 
+  ? '/tmp/temp' 
+  : path.join(__dirname, 'temp');
+
+console.log('Using TEMP_DIR:', TEMP_DIR);
+
 if (!fs.existsSync(TEMP_DIR)) {
-  fs.mkdirSync(TEMP_DIR, { recursive: true });
+  try {
+    fs.mkdirSync(TEMP_DIR, { recursive: true });
+    console.log('Successfully created directory:', TEMP_DIR);
+  } catch (error) {
+    console.error('Error creating directory:', error);
+  }
 }
 
 console.log('サーバー起動時Gemini AI初期化確認:', {
